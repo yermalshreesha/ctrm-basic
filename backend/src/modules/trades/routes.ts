@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../shared/asyncHandler.js";
 import { formatZodError, idParamSchema } from "../../shared/validation.js";
+import { serializeShipment } from "../shipments/service.js";
 import {
   createTradeSchema,
   listTradesQuerySchema,
@@ -8,9 +9,10 @@ import {
 } from "./schema.js";
 import {
   cancelTrade,
+  completeTrade,
   confirmTrade,
   createTrade,
-  getTradeById,
+  getTradeByIdWithShipments,
   listTrades,
   patchTrade,
   serializeTrade,
@@ -55,7 +57,7 @@ tradesRouter.get(
       return;
     }
 
-    const trade = await getTradeById(parsedId.data.id);
+    const trade = await getTradeByIdWithShipments(parsedId.data.id);
     if (!trade) {
       res.status(404).json({
         error: "not_found",
@@ -64,7 +66,10 @@ tradesRouter.get(
       return;
     }
 
-    res.status(200).json(serializeTrade(trade));
+    res.status(200).json({
+      ...serializeTrade(trade),
+      shipments: trade.shipments.map(serializeShipment),
+    });
   }),
 );
 
@@ -103,6 +108,25 @@ tradesRouter.post(
     }
 
     const result = await confirmTrade(parsedId.data.id);
+    if (!result.ok) {
+      res.status(result.status).json(result.body);
+      return;
+    }
+
+    res.status(200).json(serializeTrade(result.data));
+  }),
+);
+
+tradesRouter.post(
+  "/:id/complete",
+  asyncHandler(async (req, res) => {
+    const parsedId = idParamSchema.safeParse(req.params);
+    if (!parsedId.success) {
+      res.status(400).json(formatZodError(parsedId.error));
+      return;
+    }
+
+    const result = await completeTrade(parsedId.data.id);
     if (!result.ok) {
       res.status(result.status).json(result.body);
       return;

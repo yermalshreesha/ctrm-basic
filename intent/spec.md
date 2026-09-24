@@ -148,8 +148,8 @@ section 10)
 | destination | string | free text |
 | plannedDepartureDate | date | |
 | plannedArrivalDate | date | ≥ plannedDepartureDate |
-| actualDepartureDate | date, nullable | set when status → IN_TRANSIT |
-| actualArrivalDate | date, nullable | set when status → DELIVERED |
+| actualDepartureDate | date, nullable | set when status → IN_TRANSIT; client may supply it in the depart request body (defaults to today, server's local calendar date, not UTC; rejected if in the future) |
+| actualArrivalDate | date, nullable | set when status → DELIVERED; client may supply it in the deliver request body (defaults to today; rejected if in the future or before actualDepartureDate) |
 | status | enum | PLANNED, IN_TRANSIT, DELIVERED |
 | createdAt / updatedAt | timestamp | |
 
@@ -195,7 +195,7 @@ enforce standard 4 directly)
 | DRAFT | CONFIRMED | yes | all required fields present and valid |
 | DRAFT | CANCELLED | yes | — |
 | CONFIRMED | COMPLETED | yes | every shipment on the trade is DELIVERED, and sum(shipment.quantityMt) == trade.quantityMt (BR-4) |
-| CONFIRMED | CANCELLED | yes | trade has no shipments that are IN_TRANSIT or DELIVERED (BR-10) — once a shipment has left the warehouse or arrived, cancelling would require reversing inventory, which is out of scope |
+| CONFIRMED | CANCELLED | yes | trade has **no shipments at all**, of any status (BR-10) — a PLANNED shipment must be deleted first (see the Shipment DELETE endpoint, section 7); once a shipment has left the warehouse or arrived (IN_TRANSIT/DELIVERED), it can never be deleted, so cancelling would require reversing inventory or discarding completed logistics, which is out of scope |
 | COMPLETED | * | no | terminal |
 | CANCELLED | * | no | terminal |
 | DRAFT | COMPLETED | no | must pass through CONFIRMED |
@@ -203,11 +203,21 @@ enforce standard 4 directly)
 ### Shipment: PLANNED → IN_TRANSIT → DELIVERED
 | From | To | Allowed | Guard |
 |---|---|---|---|
-| PLANNED | IN_TRANSIT | yes | parent trade status is CONFIRMED; sets actualDepartureDate; for a SELL trade, decrements warehouse stock (BR-3) — see note below |
-| IN_TRANSIT | DELIVERED | yes | sets actualArrivalDate; for a BUY trade, increments warehouse stock (BR-2) |
+| PLANNED | IN_TRANSIT | yes | parent trade status is CONFIRMED; sets actualDepartureDate (from the request body, or today if omitted; rejected if in the future); for a SELL trade, decrements warehouse stock (BR-3) — see note below |
+| IN_TRANSIT | DELIVERED | yes | sets actualArrivalDate (from the request body, or today if omitted; rejected if in the future or before the shipment's actualDepartureDate); for a BUY trade, increments warehouse stock (BR-2) |
 | PLANNED | DELIVERED | no | must pass through IN_TRANSIT |
 | DELIVERED | * | no | terminal |
 | any | PLANNED (backwards) | no | no backward transitions |
+
+**Shipment deletion (not a status transition, product owner decision):**
+a shipment may be deleted only while PLANNED; `DELETE` is rejected with
+409 once it has reached IN_TRANSIT or DELIVERED. This is the mechanism
+for clearing a PLANNED shipment that's blocking its trade's
+cancellation (BR-10) — deletion is always safe with respect to
+inventory, since no InventoryMovement can exist yet for a shipment
+that hasn't reached IN_TRANSIT/DELIVERED. Planned shipments are never
+deleted automatically by any other operation (e.g. cancelling a trade
+never implicitly deletes its shipments).
 
 **Inventory triggers, stated precisely (product owner decision 5):**
 - A **purchase (BUY-trade) shipment moving to DELIVERED** increases
@@ -269,10 +279,18 @@ clear message naming the current status and the attempted status
   0, Trade.price > 0, Shipment.quantityMt > 0, enforced by schema
   validation (standard 5) and DB constraints.
 - **BR-6 (date ordering).** deliveryPeriodEnd ≥ deliveryPeriodStart on
-  Trade; plannedArrivalDate ≥ plannedDepartureDate on Shipment. Date-only
-  fields are stored as date-only DB columns (Postgres `DATE`, no time
-  component) and are represented on the wire as `"YYYY-MM-DD"` strings,
-  in both requests and responses — never a full timestamp.
+  Trade; plannedArrivalDate ≥ plannedDepartureDate on Shipment;
+  actualArrivalDate ≥ actualDepartureDate on Shipment (checked when
+  actualArrivalDate is set, i.e. on deliver). Additionally,
+  actualDepartureDate and actualArrivalDate may never be in the future
+  (compared to the server's current **local calendar date, not UTC** —
+  product owner decision, since a UTC "today" could disagree with the
+  operator's own calendar date near a day boundary) — both are optional
+  in the depart/deliver request body and default to today when omitted.
+  Date-only fields are stored as date-only DB
+  columns (Postgres `DATE`, no time component) and are represented on
+  the wire as `"YYYY-MM-DD"` strings, in both requests and responses —
+  never a full timestamp.
 - **BR-7 (status transitions are whitelisted).** Only the transitions
   listed in section 5 are permitted; every other transition is
   rejected with an error naming both statuses. (Standard 3)
@@ -285,11 +303,18 @@ clear message naming the current status and the attempted status
   them (decision 3), so there is no active/inactive or referential-
   integrity concern to enforce here. Revisit if editable lists are
   built later (section 10).
-- **BR-10 (cancellation blocked once shipped).** A Trade may only move
-  CONFIRMED → CANCELLED if none of its shipments are IN_TRANSIT or
-  DELIVERED; otherwise reject with a 409 naming the blocking
-  shipment(s). Cancelling after a shipment has moved would require
-  reversing inventory movements, which is out of scope.
+- **BR-10 (cancellation blocked once any shipment exists).** A Trade
+  may only move CONFIRMED → CANCELLED if it has **no shipments at
+  all**; otherwise reject with a 409 listing all of the trade's
+  existing shipments (of any status — PLANNED, IN_TRANSIT or
+  DELIVERED). (Product owner decision, tightened from an earlier draft
+  that allowed cancelling with only PLANNED shipments.) A PLANNED
+  shipment can be deleted (see section 7) to clear the block; an
+  IN_TRANSIT or DELIVERED shipment can never be deleted, so
+  cancellation is then permanently blocked — reversing inventory
+  movements or discarding completed logistics is out of scope.
+  Shipments are never deleted automatically as a side effect of any
+  other operation, including a rejected or attempted cancel.
 
 ## 7. API endpoints
 
@@ -318,15 +343,16 @@ Warehouse in this version; rows come from a seed script. See section
 - `PATCH /api/trades/:id` — edit fields, only while status is DRAFT
 - `POST /api/trades/:id/confirm` — DRAFT → CONFIRMED
 - `POST /api/trades/:id/complete` — CONFIRMED → COMPLETED (BR-4 checked)
-- `POST /api/trades/:id/cancel` — DRAFT/CONFIRMED → CANCELLED (BR-10 checked)
+- `POST /api/trades/:id/cancel` — DRAFT/CONFIRMED → CANCELLED (BR-10 checked: a CONFIRMED trade must have no shipments at all, of any status)
 
 ### Shipments
 - `GET /api/shipments` — list, filterable by `status`, `tradeId`, `warehouseId`
 - `POST /api/shipments` — create under a trade (status defaults to PLANNED; trade must be CONFIRMED; BR-4a checked)
 - `GET /api/shipments/:id`
-- `PATCH /api/shipments/:id` — edit fields, only while status is PLANNED (BR-4a re-checked if quantityMt changes)
-- `POST /api/shipments/:id/depart` — PLANNED → IN_TRANSIT (BR-3 applied if SELL)
-- `POST /api/shipments/:id/deliver` — IN_TRANSIT → DELIVERED (BR-2 applied if BUY)
+- `PATCH /api/shipments/:id` — edit fields, only while status is PLANNED (BR-4a re-checked if quantityMt changes); `tradeId` is immutable and not accepted
+- `POST /api/shipments/:id/depart` — PLANNED → IN_TRANSIT (BR-3 applied if SELL); body may optionally include `actualDepartureDate` (`"YYYY-MM-DD"`, defaults to today; rejected if in the future)
+- `POST /api/shipments/:id/deliver` — IN_TRANSIT → DELIVERED (BR-2 applied if BUY); body may optionally include `actualArrivalDate` (`"YYYY-MM-DD"`, defaults to today; rejected if in the future or before the shipment's actualDepartureDate)
+- `DELETE /api/shipments/:id` — deletes a shipment, only while PLANNED (409 otherwise); this is how a PLANNED shipment that's blocking its trade's cancellation (BR-10) is cleared — never done automatically
 
 ### Inventory
 - `GET /api/inventory` — current InventoryBalance rows, joined with warehouse/commodity names
@@ -360,19 +386,20 @@ dropdown options, populated from `GET /api/counterparties` and `GET
   editable and Confirm/Cancel actions are shown; while CONFIRMED, shows
   Complete/Cancel actions and the list of linked shipments (with a
   link to add a new shipment); while COMPLETED/CANCELLED, read-only.
-  A Cancel action on a CONFIRMED trade with an IN_TRANSIT or DELIVERED
-  shipment is disabled/rejected per BR-10, with a message naming the
-  blocking shipment. Validation errors appear next to the relevant
-  field (standard 6).
+  A Cancel action on a CONFIRMED trade with any shipments (PLANNED,
+  IN_TRANSIT or DELIVERED) is disabled/rejected per BR-10, with a
+  message naming them; a PLANNED one must be deleted (via the Shipment
+  detail screen's Delete action) before the trade can be cancelled.
+  Validation errors appear next to the relevant field (standard 6).
 - **Logistics (list)** — table of shipments across all trades: trade
   (linked), commodity, warehouse, transport mode, origin, destination,
   planned/actual dates, status; filters by status/warehouse.
 - **Shipment detail / form** — all Shipment fields; while PLANNED,
-  fields editable and a "Depart" action is shown; while IN_TRANSIT, a
-  "Deliver" action is shown; while DELIVERED, read-only. A
-  quantity-exceeds-trade rejection on create/edit (BR-4a) and an
-  insufficient-stock rejection on Depart (BR-3) are both shown as
-  field-level errors on quantity.
+  fields editable and "Depart" and "Delete" actions are shown; while
+  IN_TRANSIT, a "Deliver" action is shown; while DELIVERED, read-only
+  (no Delete action once past PLANNED). A quantity-exceeds-trade
+  rejection on create/edit (BR-4a) and an insufficient-stock rejection
+  on Depart (BR-3) are both shown as field-level errors on quantity.
 - **Inventory** — table of current stock: warehouse, commodity,
   quantity MT; below it, a movements ledger (date, warehouse,
   commodity, +/− MT, linked shipment) for traceability.
@@ -395,10 +422,14 @@ dropdown options, populated from `GET /api/counterparties` and `GET
 - AC-4a: Creating or editing a shipment whose quantity would push the
   sum of the trade's shipment quantities above the trade quantity is
   rejected with a 400 and a clear message (BR-4a).
-- AC-4b: Attempting to cancel a CONFIRMED trade that has a shipment in
-  IN_TRANSIT or DELIVERED status is rejected with a 409 naming the
-  blocking shipment (BR-10); cancelling a trade whose shipments are
-  all still PLANNED (or that has none) succeeds.
+- AC-4b: Attempting to cancel a CONFIRMED trade that has any shipment,
+  of any status (PLANNED, IN_TRANSIT or DELIVERED), is rejected with a
+  409 listing all of them (BR-10); cancelling a trade with no
+  shipments at all succeeds.
+- AC-4c: Deleting a PLANNED shipment succeeds and removes it from its
+  trade (and, once that was the trade's only shipment, clears AC-4b's
+  block); deleting a shipment that is IN_TRANSIT or DELIVERED is
+  rejected with a 409.
 
 **"Delivering a purchase shipment increases the right warehouse's
 stock"**
@@ -422,9 +453,9 @@ stock"**
   invalid status transition on Trade and on Shipment; rejecting a
   shipment create/edit that would exceed the trade quantity (BR-4a);
   rejecting a trade completion when shipment quantities don't
-  reconcile (BR-4); rejecting a trade cancellation once a shipment is
-  IN_TRANSIT or DELIVERED (BR-10); rejecting a negative/zero quantity
-  or price at the API layer.
+  reconcile (BR-4); rejecting a trade cancellation while it has any
+  shipment (BR-10); rejecting a negative/zero quantity or price at the
+  API layer.
 
 ## 10. Out of scope / future intent
 

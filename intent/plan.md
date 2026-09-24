@@ -350,17 +350,40 @@ inventory service inside the same transaction as the status update. Trade
 completion becomes meaningful and testable here, and BR-10's cancellation
 guard becomes fully testable now that shipments exist.
 
+**Decisions confirmed with the product owner for this phase
+(2026-09-25), recorded in spec.md:**
+- `depart`/`deliver` accept an optional `actualDepartureDate`/
+  `actualArrivalDate` (`"YYYY-MM-DD"`) in the request body, defaulting to
+  today — the server's **local calendar date, not UTC** (see
+  `backend/src/shared/dates.ts`'s `localToday()`) — when omitted; a
+  future date is rejected, and a deliver date before the shipment's
+  `actualDepartureDate` is rejected.
+- BR-10 is **tightened**: a CONFIRMED trade can only be cancelled if it
+  has no shipments at all, of any status — not just none IN_TRANSIT/
+  DELIVERED as originally drafted. A PLANNED shipment now blocks
+  cancellation too; the 409 lists all of the trade's existing shipments.
+  Shipments are never deleted automatically (not by a cancel attempt, not
+  by anything else) — the user must delete PLANNED ones explicitly.
+- BR-4's two conditions (quantities sum exactly to trade quantity, AND
+  every shipment DELIVERED) are both required together — test both ways
+  a completion can fail (sum matches but not all delivered; all delivered
+  but sum doesn't match), not just the combined case.
+- New endpoint: `DELETE /api/shipments/:id`, allowed only while PLANNED
+  (409 otherwise) — this is how a PLANNED shipment blocking a trade
+  cancellation gets cleared.
+
 **Files:**
 - `backend/prisma/schema.prisma` — add `Shipment` model + enum, migration
 - `backend/src/modules/shipments/` — service (create, get, list w/
-  filters, patch, depart, deliver) + routes + validation; `depart`/
+  filters, patch, depart, deliver, delete) + routes + validation; `depart`/
   `deliver` call `inventory.service.recordMovement(...)` from Phase 3a
 - `backend/src/modules/trades/service.ts` — extend with `complete()` and
-  the full BR-10 shipment-status check on `cancel()`
+  the full (tightened) BR-10 shipment-existence check on `cancel()`
 
 **Business rules implemented:** BR-2, BR-3 (both now triggered by
 shipment status transitions, not just directly callable), BR-4, BR-4a,
-BR-8, BR-10 (full), plus BR-1/5/6/7 applied to Shipment.
+BR-8, BR-10 (full, tightened per the decision above), plus BR-1/5/6/7
+applied to Shipment.
 
 **Tests:**
 - BR-2: delivering a BUY shipment increases the destination warehouse's
@@ -370,16 +393,26 @@ BR-8, BR-10 (full), plus BR-1/5/6/7 applied to Shipment.
   departing when balance is insufficient is rejected with 409 and doesn't
   mutate state.
 - BR-4: completing a CONFIRMED trade succeeds only when every shipment is
-  DELIVERED and quantities sum exactly to trade quantity (AC-3); otherwise
-  409 (AC-4).
+  DELIVERED and quantities sum exactly to trade quantity (AC-3); rejected
+  409 when quantities sum correctly but not every shipment is DELIVERED;
+  rejected 409 when every shipment is DELIVERED but quantities don't sum
+  to trade quantity (AC-4).
 - BR-4a: creating or editing a shipment whose quantity would push the
   trade's shipment total over the trade quantity is rejected with 400
   (AC-4a), both on create and on PATCH.
 - BR-8: a shipment's commodity is always read from its trade, never stored
   independently (assert no `commodityId` column / value drift possible).
-- BR-10: cancelling a CONFIRMED trade with an IN_TRANSIT or DELIVERED
-  shipment is rejected with 409 naming the shipment (AC-4b); cancelling
-  with only PLANNED shipments (or none) succeeds.
+- BR-10 (tightened): cancelling a CONFIRMED trade with any shipment —
+  PLANNED, IN_TRANSIT, or DELIVERED — is rejected with 409 listing all of
+  them (AC-4b); cancelling a trade with no shipments at all succeeds;
+  deleting a trade's only (PLANNED) shipment and retrying cancel then
+  succeeds.
+- Shipment delete (AC-4c): deleting a PLANNED shipment succeeds; deleting
+  an IN_TRANSIT or DELIVERED shipment is rejected with 409.
+- depart/deliver actual-date handling: omitting `actualDepartureDate`/
+  `actualArrivalDate` defaults it to today; a future date is rejected
+  (400); an `actualArrivalDate` before the shipment's `actualDepartureDate`
+  is rejected (400).
 - Invalid shipment transitions rejected (PLANNED→DELIVERED, DELIVERED→*,
   advancing a shipment whose trade isn't CONFIRMED).
 
@@ -388,7 +421,34 @@ BR-8, BR-10 (full), plus BR-1/5/6/7 applied to Shipment.
   → add shipment(s) → depart (watch `/api/inventory` for a SELL) → deliver
   (watch `/api/inventory` for a BUY) → complete. Inspect
   `/api/inventory/movements` to see the ledger entries. Try departing a
-  SELL shipment that would exceed available stock and see the 409.
+  SELL shipment that would exceed available stock and see the 409. Try
+  cancelling a CONFIRMED trade with a PLANNED shipment attached (see the
+  409 listing it), delete the shipment, then cancel again and see it
+  succeed.
+
+**Implementation notes (decided during Phase 3b, not departures from
+the plan's intent, but resolving ambiguity in the wording above, or
+found by independent review after the phase was first implemented):**
+- `completeTrade` and `cancelTrade` (trades/service.ts) both run inside
+  a transaction that locks the trade row first (`SELECT ... FOR UPDATE`,
+  same pattern as `createShipment`) before reading its shipments —
+  without the lock, a shipment could be created concurrently between the
+  read and the commit, leaving a COMPLETED trade with a non-DELIVERED
+  shipment, or a CANCELLED trade with a shipment attached. Added after
+  an independent review of this phase found both gaps; a genuinely
+  concurrent test (`cancelTrade` racing `createShipment` on the same
+  trade) is in `trades.test.ts`.
+- **Known wart, deliberately not fixed now:** `GET /api/trades/:id`'s
+  `shipments` array reuses `shipments/service.ts`'s `serializeShipment`
+  as-is, which nests a `trade: { id, direction, status }` summary on
+  each shipment — duplicating (a slice of) the very trade object the
+  array is already nested under. Flagged by an independent review;
+  deliberately left as-is rather than changing the response shape
+  mid-phase. Revisit when Phase 6 (Trades screens) or Phase 7
+  (Logistics screens) defines what the Trade detail screen actually
+  needs from a nested shipment — the duplication may just disappear
+  once a UI-driven shape is chosen, rather than needing a standalone
+  fix.
 
 ---
 
@@ -537,22 +597,18 @@ on the Trades, Logistics and Inventory screens.
 
 | Rule | What it requires | Phase(s) | Test that proves it | Flag |
 |---|---|---|---|---|
-| BR-1 | Quantities/prices stored as fixed-point decimals, never float | 2 (Trade), 3a (Inventory), 3b (Shipment) | Phase 2: `quantityMt`/`price` round-trip exactly through create/get as fixed-scale strings; more-than-scale decimals and more-than-9/10-integer-digit values rejected 400, not rounded/truncated. Phase 3a: same round-trip/rejection cases for `quantityMt` on `InventoryMovement`/`InventoryBalance`, including the integer-digit bound. Closed for Phases 2 and 3a. | ⚠️ Still open for Phase 3b (Shipment) — add the same round-trip/rejection cases there. |
+| BR-1 | Quantities/prices stored as fixed-point decimals, never float | 2 (Trade), 3a (Inventory), 3b (Shipment) | Phase 2: `quantityMt`/`price` round-trip exactly through create/get as fixed-scale strings; more-than-scale decimals and more-than-9/10-integer-digit values rejected 400, not rounded/truncated. Phase 3a: same round-trip/rejection cases for `quantityMt` on `InventoryMovement`/`InventoryBalance`, including the integer-digit bound. Phase 3b: same round-trip/rejection cases for `quantityMt` on Shipment. Closed for Phases 2, 3a and 3b. | — |
 | BR-2 | BUY shipment → DELIVERED increases stock at the destination warehouse | 3b (trigger), 3a (mechanics) | Phase 3b: "delivering a BUY shipment increases destination balance by exactly `quantityMt`, matching movement written, no other balance changes" (AC-5, AC-6) | — |
 | BR-3 | SELL shipment → IN_TRANSIT decreases stock at the origin warehouse, rejected if insufficient | 3a (mechanics/backstop), 3b (trigger) | Phase 3a: app-level rejection + DB `CHECK` backstop test. Phase 3b: departing a SELL shipment decreases balance; insufficient stock → 409, no mutation | — |
 | BR-4 | Trade completion requires every shipment DELIVERED and qty sum == trade qty | 3b | "Completing succeeds only when all DELIVERED and sum == qty; otherwise 409" (AC-3, AC-4) | — |
 | BR-4a | Shipment qty sum must never exceed trade qty, checked on every create/edit | 3b | "Create/edit shipment exceeding trade qty rejected 400" (AC-4a) | — |
-| BR-5 | No negative or zero quantities/prices | 2 (Trade), 3b (Shipment) | Phase 2: "rejects qty ≤ 0, price ≤ 0" on Trade. | ⚠️ **No test.** Phase 3b's test list has no explicit `Shipment.quantityMt ≤ 0` rejection case — add one. |
-| BR-6 | Date ordering: `deliveryPeriodEnd ≥ deliveryPeriodStart` (Trade), `plannedArrivalDate ≥ plannedDepartureDate` (Shipment) | 2 (Trade), 3b (Shipment) | Phase 2: "rejects end date before start date" on Trade. | ⚠️ **No test.** Phase 3b's test list has no explicit Shipment date-ordering case — add one. |
+| BR-5 | No negative or zero quantities/prices | 2 (Trade), 3b (Shipment) | Phase 2: "rejects qty ≤ 0, price ≤ 0" on Trade. Phase 3b: "rejects quantityMt = 0/negative" on Shipment create and PATCH. | — |
+| BR-6 | Date ordering: `deliveryPeriodEnd ≥ deliveryPeriodStart` (Trade), `plannedArrivalDate ≥ plannedDepartureDate` (Shipment), `actualArrivalDate ≥ actualDepartureDate` (Shipment) | 2 (Trade), 3b (Shipment) | Phase 2: "rejects end date before start date" on Trade. Phase 3b: "rejects plannedArrivalDate before plannedDepartureDate" on Shipment create/PATCH; "rejects actualArrivalDate before actualDepartureDate" on deliver; "rejects a future actualDepartureDate/actualArrivalDate" (product owner decision). | — |
 | BR-7 | Only whitelisted status transitions permitted, others rejected with a clear error | 2 (Trade), 3b (Shipment) | Phase 2: invalid transitions rejected via confirm/cancel (double-confirm, confirm-after-cancel, double-cancel); `DRAFT→COMPLETED` and other `COMPLETED` cases wait for Phase 3b's `/complete` endpoint. Phase 3b: "invalid shipment transitions rejected (PLANNED→DELIVERED, DELIVERED→*, trade not CONFIRMED)", plus the deferred `DRAFT→COMPLETED` Trade case | — |
 | BR-8 | A shipment's commodity is always read from its trade, never stored independently | 3b | "assert no `commodityId` column / value drift possible" — a structural/type-level assertion rather than an HTTP integration test | — |
 | BR-9 | Commodity/Counterparty/Warehouse are fixed seed data — no create/edit/delete API | 1 | Phase 1: `POST`/`PATCH`/`DELETE` rejected (404) on all three entities' endpoints; duplicate-name creates rejected by the DB unique constraint; seed script is idempotent. | — |
-| BR-10 | Trade cancellation blocked once any shipment is IN_TRANSIT or DELIVERED | 2 (trivial case, no shipments yet), 3b (full) | Phase 2: cancel succeeds with no shipments. Phase 3b: "cancelling with an IN_TRANSIT/DELIVERED shipment rejected 409 naming it" (AC-4b); "cancelling with only PLANNED shipments succeeds" | — |
+| BR-10 | Trade cancellation blocked once it has any shipment, of any status (tightened 2026-09-25 — see Phase 3b decisions) | 2 (trivial case, no shipments yet), 3b (full) | Phase 2: cancel succeeds with no shipments. Phase 3b: "cancelling with a PLANNED/IN_TRANSIT/DELIVERED shipment rejected 409 listing all of them" (AC-4b); "cancelling with no shipments succeeds"; "deleting the blocking PLANNED shipment then cancelling succeeds" | — |
 
-**Test gaps: BR-1's Phase 2 slice is now closed (see above); BR-1
-remains open for Phases 3a/3b, and BR-5/BR-6 remain open for Phase 3b's
-Shipment tests.** Each has a phase that implements it, but the phase's
-test list as currently written doesn't include a case that directly
-proves it. Recommend adding the listed test cases to the named phase
-before marking that phase done.
-(BR-9's gap was closed in Phase 1 — see above.)
+**Test gaps: all closed.** BR-9's gap was closed in Phase 1; BR-1 is now
+closed across Phases 2, 3a and 3b; BR-5/BR-6 are now closed across
+Phases 2 and 3b (see rows above).

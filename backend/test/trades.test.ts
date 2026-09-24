@@ -16,6 +16,31 @@ async function createCounterparty(name = `Trader-${randomUUID()}`) {
   return prisma.counterparty.create({ data: { name, type: "BOTH" } });
 }
 
+async function createWarehouse(name = `Warehouse-${randomUUID()}`) {
+  return prisma.warehouse.create({ data: { name, location: "Rotterdam" } });
+}
+
+async function createShipmentViaApi(tradeId: string, warehouseId: string, quantityMt: string) {
+  const res = await request(app)
+    .post("/api/shipments")
+    .send({
+      tradeId,
+      warehouseId,
+      quantityMt,
+      transportMode: "TRUCK",
+      origin: "Origin Port",
+      destination: "Destination Port",
+      plannedDepartureDate: "2026-01-05",
+      plannedArrivalDate: "2026-01-10",
+    });
+  return res.body;
+}
+
+async function deliverFully(shipmentId: string) {
+  await request(app).post(`/api/shipments/${shipmentId}/depart`);
+  await request(app).post(`/api/shipments/${shipmentId}/deliver`);
+}
+
 function validTradeBody(overrides: Record<string, unknown> = {}) {
   return {
     direction: "BUY",
@@ -787,6 +812,324 @@ describe("trades", () => {
 
       expect(res.status).toBe(409);
       expect(res.body.message).toBe("Cannot transition trade from CANCELLED to CANCELLED");
+    });
+  });
+
+  describe("complete (POST /api/trades/:id/complete, BR-4)", () => {
+    it("transitions a CONFIRMED trade to COMPLETED when its single shipment is DELIVERED and its quantity equals the trade quantity", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            direction: "BUY",
+            quantityMt: "100.000",
+          }),
+        );
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "100.000");
+      await deliverFully(shipment.id);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("COMPLETED");
+    });
+
+    it("succeeds with multiple DELIVERED shipments summing exactly to the trade quantity", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            direction: "BUY",
+            quantityMt: "100.000",
+          }),
+        );
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+
+      const shipmentA = await createShipmentViaApi(created.body.id, warehouse.id, "60.000");
+      const shipmentB = await createShipmentViaApi(created.body.id, warehouse.id, "40.000");
+      await deliverFully(shipmentA.id);
+      await deliverFully(shipmentB.id);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("COMPLETED");
+    });
+
+    it("rejects completion when quantities sum correctly but not every shipment is DELIVERED", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            direction: "BUY",
+            quantityMt: "100.000",
+          }),
+        );
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "100.000");
+      await request(app).post(`/api/shipments/${shipment.id}/depart`);
+      // Not delivered — still IN_TRANSIT.
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
+      expect(res.status).toBe(409);
+    });
+
+    it("rejects completion when every shipment is DELIVERED but quantities don't sum to the trade quantity", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            direction: "BUY",
+            quantityMt: "100.000",
+          }),
+        );
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "60.000");
+      await deliverFully(shipment.id);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
+      expect(res.status).toBe(409);
+    });
+
+    it("rejects completion of a CONFIRMED trade with zero shipments", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
+      expect(res.status).toBe(409);
+    });
+
+    it("rejects completing a DRAFT trade (must be CONFIRMED first)", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
+      expect(res.status).toBe(409);
+    });
+
+    it("rejects completing an already-COMPLETED trade", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            direction: "BUY",
+            quantityMt: "100.000",
+          }),
+        );
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "100.000");
+      await deliverFully(shipment.id);
+      await request(app).post(`/api/trades/${created.body.id}/complete`);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
+      expect(res.status).toBe(409);
+    });
+
+    it("rejects completing a CANCELLED trade", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await request(app).post(`/api/trades/${created.body.id}/cancel`);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
+      expect(res.status).toBe(409);
+    });
+
+    it("returns 404 for a nonexistent trade id", async () => {
+      const res = await request(app).post(`/api/trades/${UNKNOWN_ID}/complete`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("cancel with shipments (BR-10, tightened 2026-09-25)", () => {
+    it("rejects cancelling a CONFIRMED trade with a PLANNED shipment, naming it", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/cancel`);
+      expect(res.status).toBe(409);
+      expect(res.body.shipmentIds).toEqual([shipment.id]);
+    });
+
+    it("rejects cancelling a CONFIRMED trade with an IN_TRANSIT shipment, naming it", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
+      await request(app).post(`/api/shipments/${shipment.id}/depart`);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/cancel`);
+      expect(res.status).toBe(409);
+      expect(res.body.shipmentIds).toEqual([shipment.id]);
+    });
+
+    it("rejects cancelling a CONFIRMED trade with a DELIVERED shipment, naming it", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
+      await deliverFully(shipment.id);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/cancel`);
+      expect(res.status).toBe(409);
+      expect(res.body.shipmentIds).toEqual([shipment.id]);
+    });
+
+    it("lists all shipments when multiple, of mixed statuses, are attached", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            quantityMt: "200.000",
+          }),
+        );
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      const plannedShipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
+      const inTransitShipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
+      await request(app).post(`/api/shipments/${inTransitShipment.id}/depart`);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/cancel`);
+      expect(res.status).toBe(409);
+      expect(res.body.shipmentIds.sort()).toEqual([plannedShipment.id, inTransitShipment.id].sort());
+    });
+
+    it("succeeds after deleting the trade's only (PLANNED) shipment", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
+
+      const blocked = await request(app).post(`/api/trades/${created.body.id}/cancel`);
+      expect(blocked.status).toBe(409);
+
+      await request(app).delete(`/api/shipments/${shipment.id}`);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/cancel`);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CANCELLED");
+    });
+
+    it("never implicitly deletes the blocking shipment on a rejected cancel attempt", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
+
+      await request(app).post(`/api/trades/${created.body.id}/cancel`);
+
+      const fetched = await request(app).get(`/api/shipments/${shipment.id}`);
+      expect(fetched.status).toBe(200);
+    });
+  });
+
+  describe("concurrency (cancelTrade vs createShipment, BR-10 tightened)", () => {
+    it("running cancelTrade and createShipment concurrently on the same CONFIRMED trade never ends with a CANCELLED trade that has a shipment", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+
+      const [cancelRes, shipmentRes] = await Promise.all([
+        request(app).post(`/api/trades/${created.body.id}/cancel`),
+        request(app)
+          .post("/api/shipments")
+          .send({
+            tradeId: created.body.id,
+            warehouseId: warehouse.id,
+            quantityMt: "50.000",
+            transportMode: "TRUCK",
+            origin: "Origin Port",
+            destination: "Destination Port",
+            plannedDepartureDate: "2026-01-05",
+            plannedArrivalDate: "2026-01-10",
+          }),
+      ]);
+
+      const trade = await prisma.trade.findUniqueOrThrow({ where: { id: created.body.id } });
+      const shipmentCount = await prisma.shipment.count({ where: { tradeId: created.body.id } });
+
+      // The lock serializes the two: whichever transaction's lock is
+      // granted first commits, and the other one re-reads the now-current
+      // state and is correctly rejected. Either outcome is valid — the
+      // one outcome that must never happen is a CANCELLED trade with a
+      // shipment attached.
+      if (trade.status === "CANCELLED") {
+        expect(shipmentCount).toBe(0);
+        expect(cancelRes.status).toBe(200);
+        expect(shipmentRes.status).toBe(409);
+      } else {
+        expect(trade.status).toBe("CONFIRMED");
+        expect(shipmentCount).toBe(1);
+        expect(shipmentRes.status).toBe(201);
+        expect(cancelRes.status).toBe(409);
+      }
     });
   });
 });

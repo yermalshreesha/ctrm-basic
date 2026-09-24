@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { app } from "../src/app.js";
@@ -13,6 +14,50 @@ async function createWarehouse(name = `Warehouse-${randomUUID()}`) {
   return prisma.warehouse.create({ data: { name, location: "Rotterdam" } });
 }
 
+async function createCounterparty(name = `Trader-${randomUUID()}`) {
+  return prisma.counterparty.create({ data: { name, type: "BOTH" } });
+}
+
+// recordMovement's shipmentId must reference a real Shipment row — the
+// FOREIGN KEY deferred from Phase 3a is added in Phase 3b. This fixture
+// gives each call a fresh, valid shipmentId, independent of whichever
+// warehouse/commodity the test itself is exercising via recordMovement's
+// own arguments (the two are unrelated as far as recordMovement's logic
+// is concerned).
+async function createConfirmedTrade() {
+  const commodity = await createCommodity();
+  const counterparty = await createCounterparty();
+  return prisma.trade.create({
+    data: {
+      commodityId: commodity.id,
+      counterpartyId: counterparty.id,
+      direction: "BUY",
+      quantityMt: "999999.000",
+      price: "1.00",
+      currency: "USD",
+      deliveryPeriodStart: new Date("2026-01-01"),
+      deliveryPeriodEnd: new Date("2026-12-31"),
+      status: "CONFIRMED",
+    },
+  });
+}
+
+async function createShipmentId(trade: { id: string }, warehouse: { id: string }) {
+  const shipment = await prisma.shipment.create({
+    data: {
+      tradeId: trade.id,
+      warehouseId: warehouse.id,
+      quantityMt: "1.000",
+      transportMode: "TRUCK",
+      origin: "Origin",
+      destination: "Destination",
+      plannedDepartureDate: new Date("2026-01-01"),
+      plannedArrivalDate: new Date("2026-01-02"),
+    },
+  });
+  return shipment.id;
+}
+
 function balanceOf(warehouseId: string, commodityId: string) {
   return prisma.inventoryBalance.findUnique({
     where: { warehouseId_commodityId: { warehouseId, commodityId } },
@@ -24,11 +69,12 @@ describe("inventory service (recordMovement)", () => {
     it("a positive quantityMt creates a movement row and increases the balance", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "25.500",
       });
 
@@ -41,17 +87,18 @@ describe("inventory service (recordMovement)", () => {
     it("a negative quantityMt decreases the balance when sufficient stock exists", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "50.000",
       });
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "-20.000",
       });
 
@@ -63,11 +110,12 @@ describe("inventory service (recordMovement)", () => {
     it("the first movement for a warehouse+commodity pair creates the balance row", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "10.000",
       });
 
@@ -77,17 +125,18 @@ describe("inventory service (recordMovement)", () => {
     it("a subsequent movement for the same pair updates the existing balance row rather than creating a duplicate", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "10.000",
       });
 
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "5.000",
       });
 
@@ -100,17 +149,18 @@ describe("inventory service (recordMovement)", () => {
       const warehouseA = await createWarehouse();
       const warehouseB = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       await recordMovement({
         warehouseId: warehouseB.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouseB),
         quantityMt: "100.000",
       });
 
       await recordMovement({
         warehouseId: warehouseA.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouseA),
         quantityMt: "5.000",
       });
 
@@ -121,13 +171,14 @@ describe("inventory service (recordMovement)", () => {
     it("after a sequence of mixed movements, the balance equals the sum of all movements for that pair", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       const amounts = ["50.000", "-10.000", "25.500", "-5.250", "1.000"];
 
       for (const quantityMt of amounts) {
         const result = await recordMovement({
           warehouseId: warehouse.id,
           commodityId: commodity.id,
-          shipmentId: randomUUID(),
+          shipmentId: await createShipmentId(trade, warehouse),
           quantityMt,
         });
         expect(result.ok).toBe(true);
@@ -142,17 +193,18 @@ describe("inventory service (recordMovement)", () => {
     it("rejects a negative quantityMt that would take the balance below zero, before writing anything", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "10.000",
       });
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "-15.000",
       });
 
@@ -169,11 +221,12 @@ describe("inventory service (recordMovement)", () => {
     it("rejects removing stock from a pair that never had any, with nothing written", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "-1.000",
       });
 
@@ -189,17 +242,18 @@ describe("inventory service (recordMovement)", () => {
     it("removing stock down to exactly zero succeeds", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "20.000",
       });
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "-20.000",
       });
 
@@ -224,24 +278,27 @@ describe("inventory service (recordMovement)", () => {
     it("under two concurrent removals that together exceed stock, exactly one succeeds, the final balance is exactly 40.000, and the other gets the insufficient-stock error, not a 500", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "90.000",
       });
 
+      const shipmentIdA = await createShipmentId(trade, warehouse);
+      const shipmentIdB = await createShipmentId(trade, warehouse);
       const [a, b] = await Promise.all([
         recordMovement({
           warehouseId: warehouse.id,
           commodityId: commodity.id,
-          shipmentId: randomUUID(),
+          shipmentId: shipmentIdA,
           quantityMt: "-50.000",
         }),
         recordMovement({
           warehouseId: warehouse.id,
           commodityId: commodity.id,
-          shipmentId: randomUUID(),
+          shipmentId: shipmentIdB,
           quantityMt: "-50.000",
         }),
       ]);
@@ -263,18 +320,21 @@ describe("inventory service (recordMovement)", () => {
     it("two concurrent additions to a warehouse+commodity with no existing balance both succeed, and the balance equals their sum", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
+      const shipmentIdA = await createShipmentId(trade, warehouse);
+      const shipmentIdB = await createShipmentId(trade, warehouse);
       const [a, b] = await Promise.all([
         recordMovement({
           warehouseId: warehouse.id,
           commodityId: commodity.id,
-          shipmentId: randomUUID(),
+          shipmentId: shipmentIdA,
           quantityMt: "30.000",
         }),
         recordMovement({
           warehouseId: warehouse.id,
           commodityId: commodity.id,
-          shipmentId: randomUUID(),
+          shipmentId: shipmentIdB,
           quantityMt: "20.000",
         }),
       ]);
@@ -291,11 +351,12 @@ describe("inventory service (recordMovement)", () => {
     it("round-trips a fractional quantityMt exactly on the created movement", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "50.500",
       });
 
@@ -308,11 +369,12 @@ describe("inventory service (recordMovement)", () => {
     it("round-trips a fractional quantityMt exactly on the resulting balance", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "50.500",
       });
 
@@ -325,11 +387,12 @@ describe("inventory service (recordMovement)", () => {
     it("rejects a quantityMt with more than 3 decimal places, without rounding, and persists nothing", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "10.1234",
       });
 
@@ -344,11 +407,12 @@ describe("inventory service (recordMovement)", () => {
     it("rejects a quantityMt with more than 9 integer digits, without truncating, and persists nothing", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         // DECIMAL(12,3) allows at most 9 digits before the point; this has 10.
         quantityMt: "1234567890.000",
       });
@@ -367,17 +431,18 @@ describe("inventory service (recordMovement)", () => {
     it("adding 0.100 and 0.200 gives exactly 0.300, not a binary-float rounding artifact", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "0.100",
       });
 
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "0.200",
       });
 
@@ -388,11 +453,12 @@ describe("inventory service (recordMovement)", () => {
     it("rejects quantityMt sent as a JS number instead of a string", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         // Intentionally wrong type to prove the runtime check catches it
         // even though the TS signature says string.
         quantityMt: 10 as unknown as string,
@@ -411,11 +477,12 @@ describe("inventory service (recordMovement)", () => {
     it("rejects a zero quantityMt", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "0.000",
       });
 
@@ -434,7 +501,8 @@ describe("inventory service (recordMovement)", () => {
     it("rejects a second movement for the same shipmentId, and nothing changes", async () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
-      const shipmentId = randomUUID();
+      const trade = await createConfirmedTrade();
+      const shipmentId = await createShipmentId(trade, warehouse);
       await recordMovement({
         warehouseId: warehouse.id,
         commodityId: commodity.id,
@@ -460,14 +528,16 @@ describe("inventory service (recordMovement)", () => {
     });
   });
 
-  describe("warehouseId/commodityId existence", () => {
+  describe("warehouseId/commodityId/shipmentId existence", () => {
     it("rejects a well-formed but nonexistent warehouseId, with nothing written", async () => {
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
+      const warehouseForShipment = await createWarehouse();
 
       const result = await recordMovement({
         warehouseId: randomUUID(),
         commodityId: commodity.id,
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouseForShipment),
         quantityMt: "10.000",
       });
 
@@ -484,11 +554,12 @@ describe("inventory service (recordMovement)", () => {
 
     it("rejects a well-formed but nonexistent commodityId, with nothing written", async () => {
       const warehouse = await createWarehouse();
+      const trade = await createConfirmedTrade();
 
       const result = await recordMovement({
         warehouseId: warehouse.id,
         commodityId: randomUUID(),
-        shipmentId: randomUUID(),
+        shipmentId: await createShipmentId(trade, warehouse),
         quantityMt: "10.000",
       });
 
@@ -501,6 +572,56 @@ describe("inventory service (recordMovement)", () => {
       }
       await expect(prisma.inventoryMovement.count()).resolves.toBe(0);
       await expect(prisma.inventoryBalance.count()).resolves.toBe(0);
+    });
+
+    // Added in Phase 3b, once Shipment exists and InventoryMovement.shipmentId
+    // gets a real FOREIGN KEY (deferred from Phase 3a) — mirrors the
+    // warehouseId/commodityId existence checks above.
+    it("rejects a well-formed but nonexistent shipmentId, with nothing written", async () => {
+      const warehouse = await createWarehouse();
+      const commodity = await createCommodity();
+
+      const result = await recordMovement({
+        warehouseId: warehouse.id,
+        commodityId: commodity.id,
+        shipmentId: randomUUID(),
+        quantityMt: "10.000",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(400);
+        expect(result.body.fields).toEqual(
+          expect.arrayContaining([expect.objectContaining({ field: "shipmentId" })]),
+        );
+      }
+      await expect(prisma.inventoryMovement.count()).resolves.toBe(0);
+      await expect(prisma.inventoryBalance.count()).resolves.toBe(0);
+    });
+
+    // The FOREIGN KEY itself (not just the app-level check above) — proven
+    // by bypassing recordMovement entirely, same "direct write" pattern as
+    // the CHECK-constraint backstop test above. Asserts the specific
+    // Prisma error code (P2003, foreign key constraint violation) rather
+    // than just "something threw", so this test can't pass for the wrong
+    // reason (e.g. a warehouseId/commodityId typo in the fixture).
+    it("a direct movement insert with a nonexistent shipmentId is rejected by the DB foreign key constraint (P2003)", async () => {
+      const warehouse = await createWarehouse();
+      const commodity = await createCommodity();
+
+      let error: unknown;
+      try {
+        await prisma.inventoryMovement.create({
+          data: { warehouseId: warehouse.id, commodityId: commodity.id, shipmentId: randomUUID(), quantityMt: "5.000" },
+        });
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+      expect((error as Prisma.PrismaClientKnownRequestError).code).toBe("P2003");
+
+      await expect(prisma.inventoryMovement.count()).resolves.toBe(0);
     });
   });
 });
@@ -545,11 +666,12 @@ describe("inventory read endpoints", () => {
       const warehouseA = await createWarehouse();
       const warehouseB = await createWarehouse();
       const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
       const movementA = await prisma.inventoryMovement.create({
         data: {
           warehouseId: warehouseA.id,
           commodityId: commodity.id,
-          shipmentId: randomUUID(),
+          shipmentId: await createShipmentId(trade, warehouseA),
           quantityMt: "10.000",
         },
       });
@@ -557,7 +679,7 @@ describe("inventory read endpoints", () => {
         data: {
           warehouseId: warehouseB.id,
           commodityId: commodity.id,
-          shipmentId: randomUUID(),
+          shipmentId: await createShipmentId(trade, warehouseB),
           quantityMt: "20.000",
         },
       });

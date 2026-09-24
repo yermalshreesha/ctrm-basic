@@ -52,6 +52,7 @@ model Warehouse {
   updatedAt          DateTime             @updatedAt
   inventoryMovements InventoryMovement[]
   inventoryBalances  InventoryBalance[]
+  shipments          Shipment[]
 }
 
 enum TradeDirection {
@@ -93,19 +94,64 @@ model Trade {
   status              TradeStatus    @default(DRAFT)
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
+  shipments           Shipment[]
 
   @@index([status])
   @@index([commodityId])
   @@index([direction])
 }
 
-// shipmentId is a plain UUID column, not yet a Prisma relation: the
-// Shipment model doesn't exist until Phase 3b. Phase 3b's migration adds
-// the FOREIGN KEY constraint and the @relation once Shipment exists —
-// same "constraint added in a later migration" pattern as
-// 20260924150000_add_trade_check_constraints. It's @unique because a
-// shipment triggers at most one stock change (its BUY delivery or its
-// SELL departure, never both) — see spec.md §4.
+enum TransportMode {
+  TRUCK
+  RAIL
+  VESSEL
+}
+
+enum ShipmentStatus {
+  PLANNED
+  IN_TRANSIT
+  DELIVERED
+}
+
+// quantityMt > 0 and plannedArrivalDate >= plannedDepartureDate (BR-5/BR-6)
+// are enforced by a DB CHECK constraint added by hand in the
+// add_shipment_check_constraints migration, same pattern as Trade's
+// constraints — Prisma's schema language has no CHECK-constraint
+// attribute. actualArrivalDate >= actualDepartureDate (checked only once
+// both are set) gets the same backstop treatment.
+//
+// No commodityId column (BR-8): a shipment's commodity is always read
+// from shipment.trade.commodityId, never stored independently, so it can
+// never disagree with its trade's commodity.
+model Shipment {
+  id                   String              @id @default(uuid())
+  tradeId              String
+  trade                Trade               @relation(fields: [tradeId], references: [id])
+  warehouseId          String
+  warehouse            Warehouse           @relation(fields: [warehouseId], references: [id])
+  quantityMt           Decimal             @db.Decimal(12, 3)
+  transportMode        TransportMode
+  origin               String
+  destination          String
+  plannedDepartureDate DateTime            @db.Date
+  plannedArrivalDate   DateTime            @db.Date
+  actualDepartureDate  DateTime?           @db.Date
+  actualArrivalDate    DateTime?           @db.Date
+  status               ShipmentStatus      @default(PLANNED)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  inventoryMovement    InventoryMovement?
+
+  @@index([status])
+  @@index([tradeId])
+  @@index([warehouseId])
+}
+
+// shipmentId is @unique because a shipment triggers at most one stock
+// change (its BUY delivery or its SELL departure, never both) — see
+// spec.md §4. Its FOREIGN KEY constraint and @relation were added in
+// Phase 3b's migration, once Shipment exists — deferred from Phase 3a,
+// which only had a plain UUID column here.
 //
 // No updatedAt: an append-only ledger, no row is ever updated after it's
 // written (ctrm-standards #2 exception).
@@ -116,6 +162,7 @@ model InventoryMovement {
   commodityId String
   commodity   Commodity @relation(fields: [commodityId], references: [id])
   shipmentId  String    @unique
+  shipment    Shipment  @relation(fields: [shipmentId], references: [id])
   quantityMt  Decimal   @db.Decimal(12, 3)
   createdAt   DateTime  @default(now())
 

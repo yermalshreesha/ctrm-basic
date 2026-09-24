@@ -7,7 +7,7 @@ type Ok<T> = { ok: true; data: T };
 type Err = { ok: false; status: number; body: Record<string, unknown> };
 export type Result<T> = Ok<T> | Err;
 
-function insufficientStock(available: Prisma.Decimal, requested: Prisma.Decimal): Err {
+export function insufficientStock(available: Prisma.Decimal, requested: Prisma.Decimal): Err {
   return {
     ok: false,
     status: 409,
@@ -20,7 +20,7 @@ function insufficientStock(available: Prisma.Decimal, requested: Prisma.Decimal)
   };
 }
 
-function duplicateMovement(shipmentId: string): Err {
+export function duplicateMovement(shipmentId: string): Err {
   return {
     ok: false,
     status: 409,
@@ -36,7 +36,7 @@ function duplicateMovement(shipmentId: string): Err {
 // warehouse+commodity — see the "concurrent removals" test) is still
 // caught here: it surfaces as the DB CHECK constraint violation, thrown
 // inside the transaction, caught below.
-class InsufficientStockInTransaction extends Error {
+export class InsufficientStockInTransaction extends Error {
   constructor(
     readonly available: Prisma.Decimal,
     readonly requested: Prisma.Decimal,
@@ -52,8 +52,69 @@ export interface RecordMovementInput {
   quantityMt: string;
 }
 
-function balanceKey(warehouseId: string, commodityId: string) {
+export function balanceKey(warehouseId: string, commodityId: string) {
   return { warehouseId_commodityId: { warehouseId, commodityId } };
+}
+
+export interface RecordMovementInTransactionInput {
+  warehouseId: string;
+  commodityId: string;
+  shipmentId: string;
+  quantityMt: Prisma.Decimal;
+}
+
+// The trusted, transaction-composable core of recordMovement: assumes
+// warehouseId/commodityId/shipmentId are already known to be valid (the
+// caller already read them off a row of its own) and quantityMt is already
+// a Prisma.Decimal within DECIMAL(12,3) bounds — no schema validation runs
+// here. Runs inside a caller-supplied `tx` so it can be composed atomically
+// with another mutation in the same transaction — e.g. a Shipment status
+// change, per BR-2/BR-3's "atomically with the status change"
+// (backend/src/modules/shipments/service.ts). Throws
+// InsufficientStockInTransaction for the app-level never-negative check;
+// lets Prisma's own conflict errors (unique-constraint P2002, CHECK P2004)
+// bubble uncaught for the caller to map, typically via isUniqueConflict/
+// isBalanceCheckViolation below.
+export async function recordMovementInTransaction(
+  tx: Prisma.TransactionClient,
+  input: RecordMovementInTransactionInput,
+): Promise<{
+  movement: Prisma.InventoryMovementGetPayload<object>;
+  balance: Prisma.InventoryBalanceGetPayload<object>;
+}> {
+  const { warehouseId, commodityId, shipmentId, quantityMt: delta } = input;
+
+  const existing = await tx.inventoryBalance.findUnique({
+    where: balanceKey(warehouseId, commodityId),
+  });
+  const current = existing?.quantityMt ?? new Prisma.Decimal(0);
+  const projected = current.plus(delta);
+  if (projected.isNegative()) {
+    throw new InsufficientStockInTransaction(current, delta);
+  }
+
+  const movement = await tx.inventoryMovement.create({
+    data: { warehouseId, commodityId, shipmentId, quantityMt: delta },
+  });
+
+  // Deliberately not upsert(): Postgres validates a CHECK constraint
+  // against the raw proposed INSERT values of an `INSERT ... ON CONFLICT
+  // DO UPDATE` *before* it even knows whether the conflict branch will
+  // run — so a legitimate decrease against an existing balance (e.g. 50 +
+  // (-20) = 30, a valid result) would still be rejected, because the
+  // discarded "insert quantityMt = -20" proposal alone fails quantityMt >=
+  // 0. A plain create-or-update only ever validates the actual resulting
+  // row, not a discarded proposal.
+  const balance = existing
+    ? await tx.inventoryBalance.update({
+        where: balanceKey(warehouseId, commodityId),
+        data: { quantityMt: { increment: delta } },
+      })
+    : await tx.inventoryBalance.create({
+        data: { warehouseId, commodityId, quantityMt: delta },
+      });
+
+  return { movement, balance };
 }
 
 // The single stock-mutation entry point (ctrm-standards #4, CLAUDE.md "all
@@ -64,13 +125,13 @@ function balanceKey(warehouseId: string, commodityId: string) {
 // anything, so a bad caller-supplied id or an oversized quantity comes back
 // as a 400, not a raw FK/numeric-overflow constraint violation surfacing as
 // a 500. Creates an InventoryMovement row and updates the matching
-// InventoryBalance atomically. See the plain-English writeup in the
-// conversation that approved this phase for how the never-negative
-// guarantee holds under concurrent calls: an app-level pre-check rejects
-// the common case before writing anything, and the DB CHECK constraint on
-// InventoryBalance is the backstop for the race case, translated back into
-// the same insufficient-stock error rather than surfacing as a raw
-// constraint-violation error.
+// InventoryBalance atomically, via recordMovementInTransaction above. See
+// the plain-English writeup in the conversation that approved this phase
+// for how the never-negative guarantee holds under concurrent calls: an
+// app-level pre-check rejects the common case before writing anything, and
+// the DB CHECK constraint on InventoryBalance is the backstop for the race
+// case, translated back into the same insufficient-stock error rather than
+// surfacing as a raw constraint-violation error.
 export async function recordMovement(input: RecordMovementInput): Promise<
   Result<{
     movement: Prisma.InventoryMovementGetPayload<object>;
@@ -85,39 +146,9 @@ export async function recordMovement(input: RecordMovementInput): Promise<
   const delta = new Prisma.Decimal(parsed.data.quantityMt);
 
   async function attempt() {
-    return prisma.$transaction(async (tx) => {
-      const existing = await tx.inventoryBalance.findUnique({
-        where: balanceKey(warehouseId, commodityId),
-      });
-      const current = existing?.quantityMt ?? new Prisma.Decimal(0);
-      const projected = current.plus(delta);
-      if (projected.isNegative()) {
-        throw new InsufficientStockInTransaction(current, delta);
-      }
-
-      const movement = await tx.inventoryMovement.create({
-        data: { warehouseId, commodityId, shipmentId, quantityMt: delta },
-      });
-
-      // Deliberately not upsert(): Postgres validates a CHECK constraint
-      // against the raw proposed INSERT values of an `INSERT ... ON
-      // CONFLICT DO UPDATE` *before* it even knows whether the conflict
-      // branch will run — so a legitimate decrease against an existing
-      // balance (e.g. 50 + (-20) = 30, a valid result) would still be
-      // rejected, because the discarded "insert quantityMt = -20" proposal
-      // alone fails quantityMt >= 0. A plain create-or-update only ever
-      // validates the actual resulting row, not a discarded proposal.
-      const balance = existing
-        ? await tx.inventoryBalance.update({
-            where: balanceKey(warehouseId, commodityId),
-            data: { quantityMt: { increment: delta } },
-          })
-        : await tx.inventoryBalance.create({
-            data: { warehouseId, commodityId, quantityMt: delta },
-          });
-
-      return { movement, balance };
-    });
+    return prisma.$transaction((tx) =>
+      recordMovementInTransaction(tx, { warehouseId, commodityId, shipmentId, quantityMt: delta }),
+    );
   }
 
   try {
@@ -163,8 +194,10 @@ export async function recordMovement(input: RecordMovementInput): Promise<
 // commodityId) and the InventoryMovement.shipmentId unique index. True
 // when every one of `fields` is among the columns Prisma reports as the
 // conflicting constraint. meta.target is normally an array of column
-// names, but a single string is handled defensively too.
-function isUniqueConflict(err: unknown, fields: string[]): boolean {
+// names, but a single string is handled defensively too. Exported so
+// shipments/service.ts can apply the same mapping to conflicts raised by
+// recordMovementInTransaction when composed inside its own transaction.
+export function isUniqueConflict(err: unknown, fields: string[]): boolean {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2002") return false;
   const target = err.meta?.target;
   const targets = Array.isArray(target) ? target : typeof target === "string" ? [target] : [];
@@ -182,7 +215,7 @@ const BALANCE_CHECK_CONSTRAINT = "InventoryBalance_quantityMt_nonnegative";
 // P2004 — a Prisma quirk, not something this service can prevent.
 // Recognized by the constraint's name either way, so the race case always
 // comes back as insufficient-stock, never an unhandled 500.
-function isBalanceCheckViolation(err: unknown): boolean {
+export function isBalanceCheckViolation(err: unknown): boolean {
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2004") return true;
   return err instanceof Prisma.PrismaClientUnknownRequestError && err.message.includes(BALANCE_CHECK_CONSTRAINT);
 }
