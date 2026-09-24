@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ctrm-basic-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ctrm
+      POSTGRES_PASSWORD: ctrm
+      POSTGRES_DB: ctrm_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - ctrm-postgres-data:/var/lib/postgresql/data
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ctrm -d ctrm_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ctrm-postgres-data:

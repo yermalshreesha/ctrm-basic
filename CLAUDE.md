@@ -18,8 +18,26 @@ same commit.
 - Prisma with PostgreSQL; npm workspaces in one repo
 
 ## Commands
-To be filled in once the project is scaffolded (install, dev,
-test, lint, database migrate).
+Run all of these from the repo root (npm workspaces).
+
+- Install: `npm install`
+- Start database (Postgres in Docker, `ctrm_dev` + `ctrm_test`): `npm run db:up`
+  (stop with `npm run db:down`)
+- Dev (backend + frontend together): `npm run dev`
+  - Backend alone: `npm run dev -w backend` (Express on port 3001,
+    `GET /api/health`)
+  - Frontend alone: `npm run dev -w frontend` (Vite)
+- Build everything: `npm run build`
+- Test (backend, against the real `ctrm_test` database): `npm test`
+- Lint (both workspaces): `npm run lint`
+- Migrate dev database: `npm run db:migrate`
+- Seed dev database: `npm run db:seed`
+- Reset test database (drops/recreates against `ctrm_test`, run after
+  schema changes): `npm run db:test:reset`
+
+Requires Docker Desktop running and the database up (`npm run db:up`)
+before `npm test`, `npm run dev -w backend`, or any `db:*` command.
+Copy `.env.example` to `.env` on first setup (already done in this repo).
 
 ## Conventions
 - Follow the ctrm-standards skill.
