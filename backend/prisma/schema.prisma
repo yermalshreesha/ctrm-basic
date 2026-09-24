@@ -6,3 +6,44 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum CommodityCategory {
+  GRAIN
+  COFFEE
+  SUGAR
+}
+
+enum Unit {
+  MT
+}
+
+model Commodity {
+  id        String            @id @default(uuid())
+  name      String            @unique
+  category  CommodityCategory
+  unit      Unit
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+enum CounterpartyType {
+  BUYER
+  SELLER
+  BOTH
+}
+
+model Counterparty {
+  id        String           @id @default(uuid())
+  name      String           @unique
+  type      CounterpartyType
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model Warehouse {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  location  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

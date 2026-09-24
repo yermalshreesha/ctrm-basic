@@ -23,7 +23,13 @@ backend business logic and tests first, UI last, per CLAUDE.md.
   way to actually prove the DB-level `CHECK` constraints and transactional
   behavior the spec relies on for BR-2/BR-3/BR-4/BR-4a/BR-10. Tables are
   truncated between tests via a Vitest setup file; `prisma migrate reset`
-  is used for a full reset after schema changes.
+  is used for a full reset after schema changes. `test/setup.ts` refuses
+  to run unless `DATABASE_URL` resolves to `ctrm_test`, so a misconfigured
+  `.env` can never cause a truncate against `ctrm_dev`. Since all test
+  files share one physical database and truncate between tests, Vitest's
+  `fileParallelism` is set to `false` (`vitest.config.ts`) — otherwise
+  one file's truncate can race another file's in-flight assertions
+  (observed as flaky failures in Phase 1).
 - **Build order:** Scaffold → reference data → Trade → **Inventory service
   (3a, standalone)** → **Shipments, calling the inventory service (3b)** →
   Dashboard endpoints → then frontend: scaffold → Trades → Logistics →
@@ -108,7 +114,18 @@ conventions (404 for missing id) reused by every later module.
 
 **Tests:**
 - List endpoints return the seeded rows.
-- Get-by-id returns the right row; unknown id returns 404.
+- Get-by-id returns the right row; a well-formed but unknown id returns
+  404; a malformed (non-UUID) id returns 400.
+- `POST`/`PATCH`/`DELETE` are rejected (404, no route registered) for all
+  three entities — Commodity, Counterparty and Warehouse — since all are
+  fixed reference data (BR-9). Originally scoped to Counterparty/Warehouse
+  only per the BR-9 gap noted below; extended to Commodity too since it's
+  equally fixed seed data (spec §4).
+- Creating a second Counterparty or Warehouse with a name that already
+  exists is rejected by the database's unique constraint on `name`.
+- Running `prisma/seed.ts` creates the expected commodities,
+  counterparties and warehouses; running it twice creates no duplicates
+  (it upserts on the unique `name` field).
 
 **Manual check:**
 - `npm run db:seed`, then `curl` each of the three list endpoints and a
@@ -399,10 +416,11 @@ on the Trades, Logistics and Inventory screens.
 | BR-6 | Date ordering: `deliveryPeriodEnd ≥ deliveryPeriodStart` (Trade), `plannedArrivalDate ≥ plannedDepartureDate` (Shipment) | 2 (Trade), 3b (Shipment) | Phase 2: "rejects end date before start date" on Trade. | ⚠️ **No test.** Phase 3b's test list has no explicit Shipment date-ordering case — add one. |
 | BR-7 | Only whitelisted status transitions permitted, others rejected with a clear error | 2 (Trade), 3b (Shipment) | Phase 2: "invalid transitions rejected: DRAFT→COMPLETED, CANCELLED→anything". Phase 3b: "invalid shipment transitions rejected (PLANNED→DELIVERED, DELIVERED→*, trade not CONFIRMED)" | — |
 | BR-8 | A shipment's commodity is always read from its trade, never stored independently | 3b | "assert no `commodityId` column / value drift possible" — a structural/type-level assertion rather than an HTTP integration test | — |
-| BR-9 | Counterparty/Warehouse are fixed seed data — no create/edit/delete API | 1 | *None.* Phase 1's tests only cover `GET`/list/404-on-missing-id. | ⚠️ **No test.** Add a case asserting `POST`/`PATCH`/`DELETE` on `/api/counterparties` and `/api/warehouses` are rejected (404/405), so a future accidental mutation route doesn't silently violate this rule. |
+| BR-9 | Commodity/Counterparty/Warehouse are fixed seed data — no create/edit/delete API | 1 | Phase 1: `POST`/`PATCH`/`DELETE` rejected (404) on all three entities' endpoints; duplicate-name creates rejected by the DB unique constraint; seed script is idempotent. | — |
 | BR-10 | Trade cancellation blocked once any shipment is IN_TRANSIT or DELIVERED | 2 (trivial case, no shipments yet), 3b (full) | Phase 2: cancel succeeds with no shipments. Phase 3b: "cancelling with an IN_TRANSIT/DELIVERED shipment rejected 409 naming it" (AC-4b); "cancelling with only PLANNED shipments succeeds" | — |
 
-**4 rules flagged with a test gap: BR-1, BR-5, BR-6, BR-9.** Each has a
+**3 rules still flagged with a test gap: BR-1, BR-5, BR-6.** Each has a
 phase that implements it, but the phase's test list as currently written
 doesn't include a case that directly proves it. Recommend adding the
 listed test cases to the named phase before marking that phase done.
+(BR-9's gap was closed in Phase 1 — see above.)
