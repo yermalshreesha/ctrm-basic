@@ -30,6 +30,7 @@ Run all of these from the repo root (npm workspaces).
 - Build everything: `npm run build`
 - Test (backend, against the real `ctrm_test` database): `npm test`
 - Lint (both workspaces): `npm run lint`
+- Typecheck (both workspaces, no emit): `npm run typecheck`
 - Migrate dev database: `npm run db:migrate`
 - Seed dev database: `npm run db:seed`
 - Apply pending migrations to the test database (non-destructive; run
@@ -61,8 +62,9 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
   frontend may run on 5174. Don't hard-code the frontend port.
 
 ## Verifying your work
-Run the tests and lint before reporting a task complete, and show
-the output. If a test fails, fix the code, not the test.
+Run the tests, lint, AND typecheck (`npm test`, `npm run lint`,
+`npm run typecheck`) before reporting a task complete, and show the
+output. If a test fails, fix the code, not the test.
 
 ## Things Claude gets wrong
 (Empty for now. When Claude makes the same mistake twice, add it here.)

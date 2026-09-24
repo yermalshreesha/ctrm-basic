@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:migrate": "node scripts/run-with-env.mjs prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:test:migrate": "node scripts/run-with-test-db.mjs prisma migrate deploy",

@@ -18,7 +18,7 @@ const counterpartyIdField = z
 
 const dateField = z
   .string()
-  .date({ message: "must be a valid date (YYYY-MM-DD)" })
+  .date("must be a valid date (YYYY-MM-DD)")
   .transform((value) => new Date(value));
 
 // maxIntegerDigits = precision - scale of the DB column: DECIMAL(12,3) and
@@ -26,8 +26,13 @@ const dateField = z
 const quantityMtField = decimalField("quantityMt", { maxDecimals: 3, maxIntegerDigits: 9 });
 const priceField = decimalField("price", { maxDecimals: 2, maxIntegerDigits: 10 });
 
-function withDeliveryPeriodCheck<T extends { deliveryPeriodStart: Date; deliveryPeriodEnd: Date }>(
-  schema: z.ZodType<T>,
+// Input is its own free type parameter (inferred from the schema argument,
+// not defaulted to T): the schemas this wraps transform their raw string
+// date fields to Date (dateField, above), so Output (T) and Input
+// necessarily differ, and this helper only ever inspects the
+// already-transformed Output in superRefine.
+function withDeliveryPeriodCheck<T extends { deliveryPeriodStart: Date; deliveryPeriodEnd: Date }, Input>(
+  schema: z.ZodType<T, z.ZodTypeDef, Input>,
 ) {
   return schema.superRefine((data, ctx) => {
     if (data.deliveryPeriodEnd.getTime() < data.deliveryPeriodStart.getTime()) {
