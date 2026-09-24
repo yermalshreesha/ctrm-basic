@@ -51,6 +51,14 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
 - The developer is on Windows and uses Command Prompt (cmd).
   Give cmd-compatible commands (no `mkdir -p`, no `rm -rf`),
   or use npm scripts that work on any OS.
+- The project uses Prisma 6. The VS Code Prisma extension may flag
+  `url = env("DATABASE_URL")` in schema.prisma as an error because it
+  targets Prisma 7. This is expected: do not change the schema or
+  upgrade Prisma to silence it.
+- Another project's PostgreSQL already uses port 5432. This project
+  uses port 5433.
+- The kr-prolines frontend often uses port 5173, so this project's
+  frontend may run on 5174. Don't hard-code the frontend port.
 
 ## Verifying your work
 Run the tests and lint before reporting a task complete, and show
