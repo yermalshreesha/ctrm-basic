@@ -16,3 +16,5 @@ description: Apply the ctrm-basic project's design and coding standards. Use whe
 6. UI: sidebar navigation with Dashboard, Trades, Logistics, Inventory.
    List pages use tables; forms show validation errors next to fields.
 7. Tests: every business rule has at least one automated test.
+8. Secrets: never print or log passwords, connection strings or keys,
+   including in error messages.
