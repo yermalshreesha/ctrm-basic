@@ -313,6 +313,50 @@ describe("trades", () => {
       await expect(prisma.trade.count()).resolves.toBe(0);
     });
 
+    it("rejects quantityMt with more than 9 integer digits, without truncating", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+
+      const res = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            // DECIMAL(12,3) allows at most 9 digits before the point; this has 10.
+            quantityMt: "1234567890.000",
+          }),
+        );
+
+      expect(res.status).toBe(400);
+      expect(res.body.fields).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: "quantityMt" })]),
+      );
+      await expect(prisma.trade.count()).resolves.toBe(0);
+    });
+
+    it("rejects price with more than 10 integer digits, without truncating", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+
+      const res = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            // DECIMAL(12,2) allows at most 10 digits before the point; this has 11.
+            price: "12345678901.00",
+          }),
+        );
+
+      expect(res.status).toBe(400);
+      expect(res.body.fields).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: "price" })]),
+      );
+      await expect(prisma.trade.count()).resolves.toBe(0);
+    });
+
     it("returns deliveryPeriodStart and deliveryPeriodEnd as \"YYYY-MM-DD\" strings, not full timestamps", async () => {
       const commodity = await createCommodity();
       const counterparty = await createCounterparty();

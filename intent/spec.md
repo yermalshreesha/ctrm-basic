@@ -161,7 +161,7 @@ number, so it can't drift out of sync with movements)
 | id | UUID | PK |
 | warehouseId | UUID | FK → Warehouse |
 | commodityId | UUID | FK → Commodity |
-| shipmentId | UUID | FK → Shipment (the shipment delivery/departure that caused this movement) |
+| shipmentId | UUID | FK → Shipment (the shipment delivery/departure that caused this movement), **unique** — a shipment triggers at most one stock change (a BUY shipment's delivery, or a SELL shipment's departure, never both), so a second movement for the same shipmentId would mean the same event was recorded twice; rejected rather than allowed |
 | quantityMt | DECIMAL(12,3) | signed: positive for a BUY-shipment delivery, negative for a SELL-shipment departure |
 | createdAt | timestamp | |
 

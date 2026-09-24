@@ -179,6 +179,13 @@ BR-10 tests land in Phase 3b.
   `counterpartyId` is rejected 400 with a field-level error, not 500.
 - `quantityMt` with more than 3 decimals, or `price` with more than 2,
   is rejected 400, not rounded (no trade is persisted).
+- `quantityMt` with more than 9 integer digits, or `price` with more than
+  10 (the digits DECIMAL(12,3)/DECIMAL(12,2) allow before the decimal
+  point), is rejected 400, not truncated — added after an independent
+  review of Phase 3a found the same gap in Phase 3a's `quantityMt` and,
+  by inspection, here too: a value that passed the decimal-place check
+  but had too many integer digits reached Postgres as a raw "numeric
+  field overflow" (a 500), not a field-level validation error.
 - `quantityMt` and `price` round-trip exactly through create/get and
   are always returned as fixed-scale strings (e.g. `"300.00"`, not
   `"300"`) — proves BR-1 end to end, including the case where Prisma's
@@ -212,6 +219,14 @@ the plan's intent, but resolving ambiguity in the wording above):**
   Prisma schema change, run `npm run db:test:migrate` (see Commands in
   CLAUDE.md) before running tests, in addition to `npm run db:migrate`
   for the dev database.
+- `decimalField` (the string-not-number, fixed-scale decimal validator
+  used for `quantityMt`/`price`) moved from a private helper in
+  `trades/schema.ts` to `backend/src/shared/validation.ts`, gaining a
+  `maxIntegerDigits` option and an `allowNegative` option — added during
+  Phase 3a so Inventory's signed `quantityMt` could reuse it, and then
+  used to fix this phase's own integer-digit-overflow gap (see Tests,
+  above). Both modules now call the shared helper instead of each
+  defining their own.
 
 ---
 
@@ -257,6 +272,14 @@ implemented: BR-2/BR-3's actual trigger conditions ("on shipment delivered
   the backstop independently of the app-level check.
 - Balance upsert: first movement for a warehouse+commodity pair creates
   the `InventoryBalance` row; a subsequent movement updates it correctly.
+- `recordMovement` with a well-formed but nonexistent `warehouseId` or
+  `commodityId` is rejected 400 with a field-level error, not 500 — added
+  after an independent review found this path reaching Postgres as an
+  unhandled foreign-key-violation error.
+- `recordMovement` with a `quantityMt` that has more than 9 integer
+  digits (the digits `DECIMAL(12,3)` allows before the decimal point) is
+  rejected 400, not truncated — added after the same review found this
+  path reaching Postgres as an unhandled "numeric field overflow" error.
 
 **Manual check:**
 - `curl GET /api/inventory` and `GET /api/inventory/movements` both return
@@ -264,6 +287,58 @@ implemented: BR-2/BR-3's actual trigger conditions ("on shipment delivered
 - Optional: exercise `recordMovement` directly via a throwaway script
   (e.g. `ts-node`) to see a balance increase and a rejected decrease —
   this is a scratch check, not part of the app's permanent surface.
+
+**Implementation notes (decided during Phase 3a, not departures from
+the plan's intent, but resolving ambiguity in the wording above):**
+- `InventoryMovement.shipmentId` is a plain `String`/UUID column with
+  no Prisma `@relation` and no DB foreign-key constraint in this
+  phase — the `Shipment` model doesn't exist until Phase 3b. It is
+  `@unique`: a shipment triggers at most one stock change (its BUY
+  delivery or its SELL departure, never both), so a second movement
+  for the same `shipmentId` is rejected (see spec.md §4). Phase 3b's
+  migration (which creates `Shipment`) adds the FOREIGN KEY constraint
+  and the `@relation`, using the same "constraint added in a later
+  migration" pattern as `20260924150000_add_trade_check_constraints`.
+- `InventoryMovement` has no `updatedAt`, and `InventoryBalance` has a
+  composite primary key (`warehouseId`, `commodityId`) instead of a
+  separate `id`/`createdAt` — both deliberate exceptions to
+  ctrm-standards #2, since the former is an append-only ledger (no row
+  is ever updated) and the latter is a derived/materialized row with
+  no identity independent of the keys it's derived from. The standard
+  itself was updated to document these exceptions.
+- `recordMovement` validates its input with a zod schema
+  (`recordMovementSchema` in `inventory/schema.ts`) before writing
+  anything: `warehouseId`/`commodityId` must be valid UUIDs that exist
+  (the same async-refine-against-Prisma approach as
+  `trades/schema.ts`'s `commodityIdField`/`counterpartyIdField`), and
+  `quantityMt` is bounded to 3 decimal places and 9 integer digits (the
+  shared `decimalField`, signed via its `allowNegative` option — see
+  Phase 2's implementation notes). Added after an independent review
+  found that a nonexistent `warehouseId`/`commodityId` or an oversized
+  `quantityMt` reached Postgres unhandled (a raw FK-violation or
+  numeric-overflow error, surfacing as a 500) — this was a real gap in
+  the service itself, not just something Phase 3b would eventually need,
+  since `recordMovement` is directly callable (and directly tested)
+  today.
+- The service's two `P2002` (unique-constraint) checks — the
+  `InventoryBalance` composite primary key, and
+  `InventoryMovement.shipmentId` — are unified into one helper,
+  `isUniqueConflict(err, fields)`, instead of two separately-written
+  checks with slightly different `meta.target` handling.
+- `recordMovement`'s balance write is deliberately a `create`-or-
+  `update` branch on whether a balance row already exists, not a
+  single `prisma.inventoryBalance.upsert()`. Postgres validates a
+  `CHECK` constraint against the raw proposed `INSERT` values of an
+  `INSERT ... ON CONFLICT DO UPDATE` statement *before* it knows
+  whether the conflict branch will even run — so a legitimate decrease
+  against an existing balance (e.g. `50 + (-20) = 30`, a valid result)
+  was rejected by `upsert()`, because the discarded "insert
+  `quantityMt = -20`" proposal alone fails `quantityMt >= 0`, even
+  though the actual update would have succeeded. A plain `update` only
+  ever validates the real resulting row. Concurrent *first* movements
+  for a pair with no existing balance (both taking the `create`
+  branch) still race on the primary key; that case is handled with a
+  one-shot retry after a caught conflict, not `upsert()`.
 
 ---
 
@@ -462,7 +537,7 @@ on the Trades, Logistics and Inventory screens.
 
 | Rule | What it requires | Phase(s) | Test that proves it | Flag |
 |---|---|---|---|---|
-| BR-1 | Quantities/prices stored as fixed-point decimals, never float | 2 (Trade), 3a (Inventory), 3b (Shipment) | Phase 2: `quantityMt`/`price` round-trip exactly through create/get as fixed-scale strings; more-than-scale decimals rejected 400, not rounded. Closed the gap this row used to flag for Phase 2. | ⚠️ Still open for Phase 3a (Inventory) and 3b (Shipment) — add the same round-trip/rejection cases there. |
+| BR-1 | Quantities/prices stored as fixed-point decimals, never float | 2 (Trade), 3a (Inventory), 3b (Shipment) | Phase 2: `quantityMt`/`price` round-trip exactly through create/get as fixed-scale strings; more-than-scale decimals and more-than-9/10-integer-digit values rejected 400, not rounded/truncated. Phase 3a: same round-trip/rejection cases for `quantityMt` on `InventoryMovement`/`InventoryBalance`, including the integer-digit bound. Closed for Phases 2 and 3a. | ⚠️ Still open for Phase 3b (Shipment) — add the same round-trip/rejection cases there. |
 | BR-2 | BUY shipment → DELIVERED increases stock at the destination warehouse | 3b (trigger), 3a (mechanics) | Phase 3b: "delivering a BUY shipment increases destination balance by exactly `quantityMt`, matching movement written, no other balance changes" (AC-5, AC-6) | — |
 | BR-3 | SELL shipment → IN_TRANSIT decreases stock at the origin warehouse, rejected if insufficient | 3a (mechanics/backstop), 3b (trigger) | Phase 3a: app-level rejection + DB `CHECK` backstop test. Phase 3b: departing a SELL shipment decreases balance; insufficient stock → 409, no mutation | — |
 | BR-4 | Trade completion requires every shipment DELIVERED and qty sum == trade qty | 3b | "Completing succeeds only when all DELIVERED and sum == qty; otherwise 409" (AC-3, AC-4) | — |
