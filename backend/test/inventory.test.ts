@@ -266,11 +266,19 @@ describe("inventory service (recordMovement)", () => {
       const warehouse = await createWarehouse();
       const commodity = await createCommodity();
 
-      await expect(
-        prisma.inventoryBalance.create({
+      let error: unknown;
+      try {
+        await prisma.inventoryBalance.create({
           data: { warehouseId: warehouse.id, commodityId: commodity.id, quantityMt: "-5.000" },
-        }),
-      ).rejects.toThrow();
+        });
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(Prisma.PrismaClientUnknownRequestError);
+      expect((error as Prisma.PrismaClientUnknownRequestError).message).toContain(
+        "InventoryBalance_quantityMt_nonnegative",
+      );
 
       await expect(prisma.inventoryBalance.count()).resolves.toBe(0);
     });
