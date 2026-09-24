@@ -142,8 +142,15 @@ to exist to be meaningfully tested.
 **Files:**
 - `backend/prisma/schema.prisma` — add `Trade` model + `TradeStatus` enum,
   migration
+- `backend/prisma/migrations/20260924150000_add_trade_check_constraints/` —
+  hand-written SQL migration (not derivable from schema.prisma, which has
+  no CHECK-constraint attribute): `quantityMt > 0`, `price > 0`,
+  `deliveryPeriodEnd >= deliveryPeriodStart` as DB-level backstops for
+  BR-5/BR-6, added after an independent review of this phase.
 - `backend/src/modules/trades/` — service (create, get, list w/ filters,
-  patch, confirm, cancel) + routes + validation schema
+  patch, confirm, cancel) + routes + validation schema. `quantityMt`/
+  `price` accept only strings (a JSON number is rejected 400); positivity
+  is checked on the digit string, never via `Number(value) > 0`.
 
 **Business rules implemented:** BR-1 (decimal quantity/price), BR-5
 (quantity/price > 0), BR-6 (deliveryPeriodEnd ≥ deliveryPeriodStart),
@@ -159,14 +166,52 @@ BR-10 tests land in Phase 3b.
 - Confirm: DRAFT with valid fields → CONFIRMED; missing/invalid fields
   rejected.
 - Cancel: DRAFT→CANCELLED and CONFIRMED→CANCELLED (no shipments) succeed.
-- Invalid transitions rejected: DRAFT→COMPLETED, CANCELLED→anything.
+- Invalid transitions rejected via the endpoints that exist in this
+  phase (`confirm`, `cancel`): confirming an already-CONFIRMED trade,
+  confirming a CANCELLED trade, cancelling an already-CANCELLED trade —
+  each 409, naming both statuses. `DRAFT→COMPLETED` and other
+  `COMPLETED`-related transitions can't be exercised over HTTP until
+  Phase 3b adds the `/complete` endpoint; their tests land there.
 - PATCH only permitted while DRAFT; rejected once CONFIRMED/CANCELLED.
+- A `status` field in a PATCH body is ignored — status only changes via
+  `confirm`/`cancel`.
+- Create/PATCH with a well-formed but nonexistent `commodityId` or
+  `counterpartyId` is rejected 400 with a field-level error, not 500.
+- `quantityMt` with more than 3 decimals, or `price` with more than 2,
+  is rejected 400, not rounded (no trade is persisted).
+- `quantityMt` and `price` round-trip exactly through create/get and
+  are always returned as fixed-scale strings (e.g. `"300.00"`, not
+  `"300"`) — proves BR-1 end to end, including the case where Prisma's
+  `Decimal.toString()` would otherwise normalize away trailing zeros.
+- PATCH changing only `deliveryPeriodEnd` (or only `deliveryPeriodStart`)
+  to conflict with the other, already-stored date is rejected 400, with
+  the error attached to whichever field the client actually submitted
+  (not always `deliveryPeriodEnd`).
+- `quantityMt`/`price` sent as a JSON number (not a string) is rejected
+  400 with a field-level error, nothing persisted.
+- `deliveryPeriodStart`/`deliveryPeriodEnd` round-trip through create/get
+  as `"YYYY-MM-DD"` strings, not full timestamps.
+- An unexpected error thrown inside a route handler (e.g. a DB call
+  rejecting) never reaches the client with internal details — it's
+  caught by the global error handler (see Cross-cutting) and returns a
+  generic 500.
+- PATCH on an unknown id returns 404; on a malformed id, 400.
 - List filters by `status`, `commodityId`, `direction`.
 
 **Manual check:**
 - Via curl/Postman: create a trade referencing seeded commodity/
   counterparty, confirm it, cancel a different one from DRAFT and from
   CONFIRMED; try an invalid transition and see the 409 message.
+
+**Implementation notes (decided during Phase 2, not departures from
+the plan's intent, but resolving ambiguity in the wording above):**
+- `GET /api/trades/:id` does not return a `shipments` key in this
+  phase — the `Shipment` model doesn't exist until Phase 3b, which is
+  when this endpoint starts including it, per spec §7.
+- The test database schema must be kept in sync manually: after any
+  Prisma schema change, run `npm run db:test:migrate` (see Commands in
+  CLAUDE.md) before running tests, in addition to `npm run db:migrate`
+  for the dev database.
 
 ---
 
@@ -386,6 +431,16 @@ on the Trades, Logistics and Inventory screens.
 
 ## Cross-cutting, applies to every phase
 
+- A global Express error-handling middleware (`backend/src/shared/
+  errorHandler.ts`), registered last in `app.ts`, catches every otherwise-
+  unhandled error and returns a generic 500 JSON body with no internal
+  details (standard 8) — the real error is logged server-side only. Since
+  this project is on Express 4 (not 5), a rejected promise from an async
+  route handler is not forwarded to error middleware automatically; every
+  async handler is wrapped with `backend/src/shared/asyncHandler.ts` so
+  its errors reach `next(err)` and, from there, the global handler.
+  Added after an independent review of Phase 2 found async errors were
+  going unhandled.
 - Every mutation endpoint validates its input against a schema (standard
   5) before touching the database.
 - Every stock-mutating operation goes through the Phase 3a inventory
@@ -407,20 +462,22 @@ on the Trades, Logistics and Inventory screens.
 
 | Rule | What it requires | Phase(s) | Test that proves it | Flag |
 |---|---|---|---|---|
-| BR-1 | Quantities/prices stored as fixed-point decimals, never float | 2 (Trade), 3a (Inventory), 3b (Shipment) | *None dedicated.* Existing tests check validation (rejects ≤ 0), not decimal precision itself. | ⚠️ **No test.** Add a case with a fractional value (e.g. `12.345` MT) that round-trips through create/get exactly, proving no binary-float rounding. |
+| BR-1 | Quantities/prices stored as fixed-point decimals, never float | 2 (Trade), 3a (Inventory), 3b (Shipment) | Phase 2: `quantityMt`/`price` round-trip exactly through create/get as fixed-scale strings; more-than-scale decimals rejected 400, not rounded. Closed the gap this row used to flag for Phase 2. | ⚠️ Still open for Phase 3a (Inventory) and 3b (Shipment) — add the same round-trip/rejection cases there. |
 | BR-2 | BUY shipment → DELIVERED increases stock at the destination warehouse | 3b (trigger), 3a (mechanics) | Phase 3b: "delivering a BUY shipment increases destination balance by exactly `quantityMt`, matching movement written, no other balance changes" (AC-5, AC-6) | — |
 | BR-3 | SELL shipment → IN_TRANSIT decreases stock at the origin warehouse, rejected if insufficient | 3a (mechanics/backstop), 3b (trigger) | Phase 3a: app-level rejection + DB `CHECK` backstop test. Phase 3b: departing a SELL shipment decreases balance; insufficient stock → 409, no mutation | — |
 | BR-4 | Trade completion requires every shipment DELIVERED and qty sum == trade qty | 3b | "Completing succeeds only when all DELIVERED and sum == qty; otherwise 409" (AC-3, AC-4) | — |
 | BR-4a | Shipment qty sum must never exceed trade qty, checked on every create/edit | 3b | "Create/edit shipment exceeding trade qty rejected 400" (AC-4a) | — |
 | BR-5 | No negative or zero quantities/prices | 2 (Trade), 3b (Shipment) | Phase 2: "rejects qty ≤ 0, price ≤ 0" on Trade. | ⚠️ **No test.** Phase 3b's test list has no explicit `Shipment.quantityMt ≤ 0` rejection case — add one. |
 | BR-6 | Date ordering: `deliveryPeriodEnd ≥ deliveryPeriodStart` (Trade), `plannedArrivalDate ≥ plannedDepartureDate` (Shipment) | 2 (Trade), 3b (Shipment) | Phase 2: "rejects end date before start date" on Trade. | ⚠️ **No test.** Phase 3b's test list has no explicit Shipment date-ordering case — add one. |
-| BR-7 | Only whitelisted status transitions permitted, others rejected with a clear error | 2 (Trade), 3b (Shipment) | Phase 2: "invalid transitions rejected: DRAFT→COMPLETED, CANCELLED→anything". Phase 3b: "invalid shipment transitions rejected (PLANNED→DELIVERED, DELIVERED→*, trade not CONFIRMED)" | — |
+| BR-7 | Only whitelisted status transitions permitted, others rejected with a clear error | 2 (Trade), 3b (Shipment) | Phase 2: invalid transitions rejected via confirm/cancel (double-confirm, confirm-after-cancel, double-cancel); `DRAFT→COMPLETED` and other `COMPLETED` cases wait for Phase 3b's `/complete` endpoint. Phase 3b: "invalid shipment transitions rejected (PLANNED→DELIVERED, DELIVERED→*, trade not CONFIRMED)", plus the deferred `DRAFT→COMPLETED` Trade case | — |
 | BR-8 | A shipment's commodity is always read from its trade, never stored independently | 3b | "assert no `commodityId` column / value drift possible" — a structural/type-level assertion rather than an HTTP integration test | — |
 | BR-9 | Commodity/Counterparty/Warehouse are fixed seed data — no create/edit/delete API | 1 | Phase 1: `POST`/`PATCH`/`DELETE` rejected (404) on all three entities' endpoints; duplicate-name creates rejected by the DB unique constraint; seed script is idempotent. | — |
 | BR-10 | Trade cancellation blocked once any shipment is IN_TRANSIT or DELIVERED | 2 (trivial case, no shipments yet), 3b (full) | Phase 2: cancel succeeds with no shipments. Phase 3b: "cancelling with an IN_TRANSIT/DELIVERED shipment rejected 409 naming it" (AC-4b); "cancelling with only PLANNED shipments succeeds" | — |
 
-**3 rules still flagged with a test gap: BR-1, BR-5, BR-6.** Each has a
-phase that implements it, but the phase's test list as currently written
-doesn't include a case that directly proves it. Recommend adding the
-listed test cases to the named phase before marking that phase done.
+**Test gaps: BR-1's Phase 2 slice is now closed (see above); BR-1
+remains open for Phases 3a/3b, and BR-5/BR-6 remain open for Phase 3b's
+Shipment tests.** Each has a phase that implements it, but the phase's
+test list as currently written doesn't include a case that directly
+proves it. Recommend adding the listed test cases to the named phase
+before marking that phase done.
 (BR-9's gap was closed in Phase 1 — see above.)

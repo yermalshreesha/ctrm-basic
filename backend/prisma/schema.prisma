@@ -24,6 +24,7 @@ model Commodity {
   unit      Unit
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
+  trades    Trade[]
 }
 
 enum CounterpartyType {
@@ -38,6 +39,7 @@ model Counterparty {
   type      CounterpartyType
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
+  trades    Trade[]
 }
 
 model Warehouse {
@@ -46,4 +48,49 @@ model Warehouse {
   location  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum TradeDirection {
+  BUY
+  SELL
+}
+
+enum Currency {
+  USD
+  EUR
+  GBP
+}
+
+enum TradeStatus {
+  DRAFT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+// quantityMt > 0, price > 0 and deliveryPeriodEnd >= deliveryPeriodStart
+// (BR-5, BR-6) are enforced by DB CHECK constraints added by hand in the
+// 20260924150000_add_trade_check_constraints migration — Prisma's schema
+// language has no CHECK-constraint attribute, so they aren't represented
+// here, but `prisma migrate dev` must never be run in a way that would
+// drop them (use --create-only, as that migration's own history shows).
+model Trade {
+  id                  String         @id @default(uuid())
+  commodityId         String
+  commodity           Commodity      @relation(fields: [commodityId], references: [id])
+  direction           TradeDirection
+  counterpartyId      String
+  counterparty        Counterparty   @relation(fields: [counterpartyId], references: [id])
+  quantityMt          Decimal        @db.Decimal(12, 3)
+  price               Decimal        @db.Decimal(12, 2)
+  currency            Currency
+  deliveryPeriodStart DateTime       @db.Date
+  deliveryPeriodEnd   DateTime       @db.Date
+  status              TradeStatus    @default(DRAFT)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([status])
+  @@index([commodityId])
+  @@index([direction])
 }

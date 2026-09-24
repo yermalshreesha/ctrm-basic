@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "db:migrate": "node scripts/run-with-env.mjs prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "db:test:migrate": "node scripts/run-with-test-db.mjs prisma migrate deploy",
     "db:test:reset": "node scripts/run-with-test-db.mjs prisma migrate reset --force --skip-seed"
   },
   "dependencies": {

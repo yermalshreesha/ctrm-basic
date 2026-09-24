@@ -232,7 +232,12 @@ clear message naming the current status and the attempted status
 
 - **BR-1 (quantities/prices are decimals).** All `quantityMt` and
   `price` fields are stored and computed as fixed-point decimals, never
-  binary floats, end to end (DB, ORM, API, UI). (Standard 1)
+  binary floats, end to end (DB, ORM, API, UI). (Standard 1) This
+  includes the wire format: the API accepts and returns `quantityMt`
+  and `price` only as decimal strings (e.g. `"300.00"`), in both
+  requests and responses — a JSON number in a request body is rejected
+  with a 400, since parsing it would round-trip the value through a
+  binary float before validation ever sees it.
 - **BR-2 (purchase delivery increases stock at the destination
   warehouse).** When a Shipment on a BUY trade transitions to
   DELIVERED, create an InventoryMovement of `+quantityMt` for
@@ -264,7 +269,10 @@ clear message naming the current status and the attempted status
   0, Trade.price > 0, Shipment.quantityMt > 0, enforced by schema
   validation (standard 5) and DB constraints.
 - **BR-6 (date ordering).** deliveryPeriodEnd ≥ deliveryPeriodStart on
-  Trade; plannedArrivalDate ≥ plannedDepartureDate on Shipment.
+  Trade; plannedArrivalDate ≥ plannedDepartureDate on Shipment. Date-only
+  fields are stored as date-only DB columns (Postgres `DATE`, no time
+  component) and are represented on the wire as `"YYYY-MM-DD"` strings,
+  in both requests and responses — never a full timestamp.
 - **BR-7 (status transitions are whitelisted).** Only the transitions
   listed in section 5 are permitted; every other transition is
   rejected with an error naming both statuses. (Standard 3)

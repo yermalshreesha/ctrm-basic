@@ -39,6 +39,6 @@ const { prisma } = await import("../src/db.js");
 
 afterEach(async () => {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "Commodity", "Counterparty", "Warehouse" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "Commodity", "Counterparty", "Warehouse", "Trade" RESTART IDENTITY CASCADE',
   );
 });

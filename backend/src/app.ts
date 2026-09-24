@@ -2,7 +2,9 @@ import express from "express";
 import { prisma } from "./db.js";
 import { commoditiesRouter } from "./modules/commodities/routes.js";
 import { counterpartiesRouter } from "./modules/counterparties/routes.js";
+import { tradesRouter } from "./modules/trades/routes.js";
 import { warehousesRouter } from "./modules/warehouses/routes.js";
+import { errorHandler } from "./shared/errorHandler.js";
 
 export const app = express();
 
@@ -20,3 +22,7 @@ app.get("/api/health", async (_req, res) => {
 app.use("/api/commodities", commoditiesRouter);
 app.use("/api/counterparties", counterpartiesRouter);
 app.use("/api/warehouses", warehousesRouter);
+app.use("/api/trades", tradesRouter);
+
+// Must be registered last — after every router.
+app.use(errorHandler);

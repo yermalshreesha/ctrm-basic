@@ -32,8 +32,11 @@ Run all of these from the repo root (npm workspaces).
 - Lint (both workspaces): `npm run lint`
 - Migrate dev database: `npm run db:migrate`
 - Seed dev database: `npm run db:seed`
-- Reset test database (drops/recreates against `ctrm_test`, run after
-  schema changes): `npm run db:test:reset`
+- Apply pending migrations to the test database (non-destructive; run
+  this after schema changes): `npm run db:test:migrate`
+- Reset test database (drops/recreates against `ctrm_test`; use only
+  if the test database is broken, e.g. out of sync in a way
+  `db:test:migrate` can't fix): `npm run db:test:reset`
 
 Requires Docker Desktop running and the database up (`npm run db:up`)
 before `npm test`, `npm run dev -w backend`, or any `db:*` command.
