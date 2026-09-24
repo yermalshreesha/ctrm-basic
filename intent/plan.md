@@ -58,8 +58,12 @@ harnesses wired end-to-end (proven with one smoke test).
   (Express app + `GET /api/health`), `backend/src/server.ts`
 - `backend/prisma/schema.prisma` (datasource + generator only, no models yet)
 - `backend/vitest.config.ts`, `backend/test/setup.ts` (test DB connection)
-- `backend/.eslintrc` (or flat config), root ESLint/Prettier config shared
-  with frontend
+- `backend/eslint.config.js` — flat config, typescript-eslint, type-aware
+  only for `src/**` (test/scripts/config files get non-type-checked
+  linting so they don't need to be added to `tsconfig.json`'s `include`)
+- `frontend/` keeps its Vite-scaffolded `oxlint` lint setup as-is, rather
+  than forcing a shared ESLint config onto it — the two workspaces use
+  different linters, run together by the root `lint` script
 - `frontend/` — standard Vite React-TS scaffold, untouched beyond defaults
 - Root npm scripts: `dev`, `build`, `test`, `lint`, `db:up`, `db:down`,
   `db:migrate`, `db:seed`, `db:test:reset`
@@ -373,7 +377,10 @@ on the Trades, Logistics and Inventory screens.
   conventions).
 - `npm run lint` and `npm test` (backend) must pass before a phase is
   considered done; this plan's "Tests" section per phase maps directly to
-  spec §9's acceptance criteria and AC-8's "every BR has a test."
+  spec §9's acceptance criteria and AC-8's "every BR has a test." `npm
+  run lint` runs backend ESLint and frontend oxlint together via
+  `npm run lint --workspaces --if-present` from the root — there is no
+  single shared lint config across the two workspaces (see Phase 0).
 - If implementation needs to depart from spec.md or this plan, stop and
   ask rather than improvising — per CLAUDE.md.
 
