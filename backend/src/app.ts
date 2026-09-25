@@ -2,6 +2,7 @@ import express from "express";
 import { prisma } from "./db.js";
 import { commoditiesRouter } from "./modules/commodities/routes.js";
 import { counterpartiesRouter } from "./modules/counterparties/routes.js";
+import { dashboardRouter } from "./modules/dashboard/routes.js";
 import { inventoryRouter } from "./modules/inventory/routes.js";
 import { shipmentsRouter } from "./modules/shipments/routes.js";
 import { tradesRouter } from "./modules/trades/routes.js";
@@ -27,6 +28,7 @@ app.use("/api/warehouses", warehousesRouter);
 app.use("/api/trades", tradesRouter);
 app.use("/api/shipments", shipmentsRouter);
 app.use("/api/inventory", inventoryRouter);
+app.use("/api/dashboard", dashboardRouter);
 
 // Must be registered last — after every router.
 app.use(errorHandler);

@@ -475,6 +475,21 @@ BR-1 through BR-10's cumulative effects (AC-7).
 - Using the trades/shipments created in Phase 3b's manual walkthrough,
   curl all three dashboard endpoints and hand-verify the numbers.
 
+**Implementation notes (decided during Phase 4, not departures from the
+plan's intent, but resolving ambiguity in the wording above):**
+- `/api/dashboard/positions` returns one row per commodity that has at
+  least one CONFIRMED/COMPLETED trade; a commodity with only DRAFT/
+  CANCELLED trades (or no trades at all) is omitted entirely rather than
+  reported with a zero position — there's no InventoryBalance-style row
+  to anchor a zero entry to, unlike inventory-summary.
+- `/api/dashboard/inventory-summary` and `/api/dashboard/shipments-in-
+  progress` are thin reuses of `inventory/service.ts`'s
+  `listBalances`/`serializeBalance` and a new `shipments/service.ts`
+  export, `listShipmentsInProgress` (status `in` [PLANNED, IN_TRANSIT]),
+  paired with the existing `serializeShipment` — so their shape is
+  identical to `GET /api/inventory` and `GET /api/shipments`
+  respectively, not a separate dashboard-specific projection.
+
 **— Backend is now feature-complete per spec §7. This is a natural
 checkpoint before starting the UI. —**
 

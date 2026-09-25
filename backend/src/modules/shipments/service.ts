@@ -128,6 +128,16 @@ export function listShipmentsForTrade(tradeId: string) {
   });
 }
 
+// Shipments currently PLANNED or IN_TRANSIT, across all trades — backs
+// the dashboard's shipments-in-progress widget (spec §7).
+export function listShipmentsInProgress() {
+  return prisma.shipment.findMany({
+    where: { status: { in: ["PLANNED", "IN_TRANSIT"] } },
+    include: shipmentInclude,
+    orderBy: { plannedDepartureDate: "asc" },
+  });
+}
+
 class TradeMissingInTransaction extends Error {
   constructor(readonly tradeId: string) {
     super("trade not found");

@@ -359,7 +359,7 @@ Warehouse in this version; rows come from a seed script. See section
 - `GET /api/inventory/movements` — ledger, filterable by `warehouseId`, `commodityId`
 
 ### Dashboard
-- `GET /api/dashboard/positions` — net position (bought − sold, in MT) per commodity, computed from CONFIRMED + COMPLETED trades
+- `GET /api/dashboard/positions` — net position (bought − sold, in MT) per commodity, computed from CONFIRMED + COMPLETED trades; only commodities with at least one CONFIRMED or COMPLETED trade are listed (a commodity with none — no trades at all, or only DRAFT/CANCELLED ones — is omitted, not reported at zero)
 - `GET /api/dashboard/inventory-summary` — stock by warehouse (same data as /api/inventory, shaped for the dashboard widget)
 - `GET /api/dashboard/shipments-in-progress` — shipments currently PLANNED or IN_TRANSIT
 
@@ -444,7 +444,9 @@ stock"**
 - AC-7: `/api/dashboard/positions` for a commodity equals
   sum(quantityMt of BUY trades in CONFIRMED or COMPLETED status) −
   sum(quantityMt of SELL trades in CONFIRMED or COMPLETED status) for
-  that commodity; DRAFT and CANCELLED trades are excluded.
+  that commodity; DRAFT and CANCELLED trades are excluded. A commodity
+  with no CONFIRMED or COMPLETED trade at all does not appear in the
+  response — it is omitted, not listed with a zero position.
 
 **"Core business rules are covered by automated tests"**
 - AC-8: Each rule BR-1 through BR-10 in section 6 has at least one
