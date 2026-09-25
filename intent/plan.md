@@ -507,15 +507,71 @@ wired to the backend's base URL, no real data yet.
 - `frontend/src/pages/{Dashboard,Trades,Logistics,Inventory}.tsx` —
   placeholders
 - `frontend/src/api/client.ts` — fetch wrapper, base URL from env
+- `frontend/src/api/types.ts` — TypeScript types for the API responses
+  later phases will consume (Commodity, Counterparty, Warehouse, Trade,
+  Shipment, InventoryBalance, InventoryMovement, DashboardPosition, error
+  bodies); `quantityMt`/`price` are typed `string`, never `number` (BR-1)
+- `frontend/vitest.config.ts`, `frontend/test/setup.ts` — Vitest +
+  React Testing Library harness for the frontend workspace
+- `frontend/test/Sidebar.test.tsx`, `frontend/test/client.test.ts` —
+  the two tests below
 
 **Business rules implemented:** none.
 
-**Tests:** none new (no frontend test framework in scope — see Context).
+**Tests:**
+- `Sidebar` renders the four nav links (Dashboard, Trades, Logistics,
+  Inventory) in that order.
+- `apiClient` throws an `ApiError` whose `message` is the backend's own
+  error text on a non-2xx response — both the top-level `message` a
+  `not_found`-style body carries, and the joined field messages a
+  `validation_failed` body carries instead.
 
 **Manual check:**
 - `npm run dev` (both workspaces), open the app in a browser, click
   through all four sidebar links, confirm no console errors and each page
   renders its placeholder.
+
+**Implementation notes (decided during Phase 5, not departures from
+the plan's intent, but resolving ambiguity in the wording above):**
+- **Routing:** `react-router-dom` (added as a new frontend dependency)
+  — chosen over a hand-rolled router since Phases 6-7 add detail routes
+  (Trade/Shipment detail) that benefit from a real router rather than a
+  growing bespoke switch.
+- **API wiring in dev:** the backend has no CORS middleware, and adding
+  one would be a backend change outside this phase's file list. Instead,
+  `frontend/vite.config.ts` proxies `/api/*` to `http://localhost:3001`
+  (the backend's fixed port, per CLAUDE.md), so `api/client.ts` calls
+  relative `/api/...` paths — no CORS needed, and it works regardless of
+  which port Vite itself picks.
+- **Proving the wiring works:** the Dashboard placeholder calls the real
+  `GET /api/health` via `api/client.ts` on mount and renders
+  "Backend: connected/disconnected" — this satisfies the phase goal of
+  pages "wired to the backend's base URL" without displaying any real
+  business data (Trades/Logistics/Inventory placeholders make no API
+  calls, deferred to Phases 6-8).
+- **Frontend test framework, added after all:** the Context section
+  above (2026-09-24) deferred a frontend test framework "unless requested
+  later" — it was, during this phase. `vitest` + `@testing-library/react`
+  + `@testing-library/jest-dom` + `jsdom` were added as frontend
+  devDependencies; `frontend/vitest.config.ts` mirrors the backend's own
+  `vitest.config.ts` (`globals: false`, explicit imports from `"vitest"`
+  in every test file). Frontend tests live under `frontend/test/`,
+  parallel to the backend's `backend/test/` — not colocated with `src/`
+  — and, like the backend's test files, are outside `tsconfig.app.json`'s
+  `include`, so `npm run typecheck` doesn't type-check them; `oxlint`
+  still lints them. The root `test` script is now
+  `npm run test -w backend && npm run test -w frontend`, so `npm test`
+  from the repo root runs both.
+- **Types file scope:** `api/types.ts` mirrors the shapes each backend
+  module's `serialize*` function actually returns (read directly from
+  `backend/src/modules/*/service.ts`), not just spec.md's data model —
+  e.g. `Shipment` includes the joined `commodityName`/`warehouseName` and
+  the nested `trade` summary object `serializeShipment` adds, and error
+  bodies are typed as `ApiErrorBody` (`error`, optional `message`,
+  optional `fields`, optional `shipmentIds`) to cover every shape the
+  backend's error helpers produce. Nothing in this phase's own pages
+  consumes these types yet (Dashboard's health check uses the smaller
+  `HealthResponse`); they exist for Phases 6-9 to import.
 
 ---
 
