@@ -46,6 +46,11 @@ none are implied by the intent and none are added.
    populate dropdowns on the Trade and Shipment forms. Editable lists
    are deferred — see section 10, "Out of scope / future intent."
 
+4. **PostgreSQL vs SQLite.** PostgreSQL, as proposed in section 1.
+   Both satisfy the skill's Prisma/decimal requirements equally for
+   this single-user local app; PostgreSQL is kept since it's closer to
+   what a real CTRM would run.
+
 ## 3. Areas of concern
 
 - **Inventory never-negative is a concurrency-sensitive rule.** With a
@@ -481,10 +486,3 @@ stock"**
   cancelling a trade once any shipment is IN_TRANSIT or DELIVERED.
   Supporting cancellation past that point would require reversing
   InventoryMovement entries and is deferred.
-
-## 11. Unresolved (cannot answer from intent.md)
-
-- Whether PostgreSQL (as proposed) or SQLite (lighter local-only setup,
-  no separate DB server to install) is preferred for a single-user
-  local learning app — flagged in section 1; both satisfy the
-  skill's Prisma/decimal requirements equally.

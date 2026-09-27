@@ -4,11 +4,6 @@
 // here, never `number`, so nothing in the frontend is tempted to run
 // arithmetic on them as JS floats.
 
-export interface HealthResponse {
-  status: "ok" | "error";
-  db: "connected" | "disconnected";
-}
-
 export type CommodityCategory = "GRAIN" | "COFFEE" | "SUGAR";
 export type Unit = "MT";
 
