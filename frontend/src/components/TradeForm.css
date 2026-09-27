@@ -1,0 +1,77 @@
+/* Rule 9 (ctrm-standards): label above each input, inputs the same
+   width, fields grouped into sections, required fields marked, clear
+   spacing, one clear primary button. */
+
+.trade-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 480px;
+}
+
+.form-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0;
+  padding: 8px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-section legend {
+  padding: 0 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* Generated content, not real text — keeps the accessible name/label
+   text exactly the field name, with the asterisk as a purely visual
+   required-field indicator. */
+.required-mark::after {
+  content: " *";
+  color: var(--accent);
+}
+
+.field input,
+.field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.field-error {
+  display: block;
+  width: fit-content;
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text);
+  font-size: 13px;
+}

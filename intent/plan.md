@@ -581,8 +581,57 @@ the plan's intent, but resolving ambiguity in the wording above):**
 (create, edit while DRAFT, Confirm/Cancel/Complete actions per trade
 status, field-level validation errors, BR-10 cancel-blocked messaging).
 
+**Decisions confirmed with the product owner for this phase
+(2026-09-25):**
+- **Routes:** `/trades/new` (create) and `/trades/:id` (detail/edit),
+  both rendered by `TradeDetail.tsx`, which renders `TradeForm` in
+  create/edit mode or a read-only view depending on status. After a
+  successful create, the app navigates to the new trade's `/trades/:id`.
+- **Shipments on Trade detail (Phase 6/7 boundary):** a CONFIRMED
+  trade's detail page shows a plain read-only table of its shipments
+  (id, status, quantity, warehouse — already present in `GET
+  /api/trades/:id`'s nested `shipments`), with no links (`/logistics/:id`
+  doesn't exist until Phase 7) and no "add shipment" action — a note
+  says that arrives in Phase 7.
+- **List filters** (status/commodity/direction) live in the URL as
+  query params (`useSearchParams`), not plain component state, so they
+  survive refresh/back-forward.
+- **Reference data for dropdowns:** a new
+  `frontend/src/api/referenceData.ts` exports `listCommodities()`/
+  `listCounterparties()` thin wrappers around `apiClient.get`, used by
+  `TradeForm`.
+- **Date fields** (`deliveryPeriodStart`/`deliveryPeriodEnd`) use native
+  `<input type="date">` — its value is already a `"YYYY-MM-DD"` string
+  matching the wire format, so no `Date` object is ever constructed.
+  (`quantityMt`/`price` remain text inputs, `inputMode="decimal"`, per
+  CLAUDE.md — never `type="number"`, never converted to a JS number.)
+- **Non-field errors** (409s: `invalid_transition`, `not_editable`,
+  `cannot_complete`, `shipments_exist`) show as a single dismissible
+  error banner at the top of the detail page, with the backend's
+  `message` shown verbatim — they aren't tied to one form field.
+- **No client-side pagination/sorting** on the Trades list — renders
+  all rows in the order the API returns (createdAt desc), matching the
+  single-user local scope.
+- **Edits use an explicit "Save" button** — no autosave.
+- **After every action** (Save, Confirm, Cancel, Complete), the detail
+  page re-fetches `GET /api/trades/:id` rather than using the action's
+  response body — the action endpoints (`patch`/`confirm`/`cancel`/
+  `complete`) return a bare `Trade`, without the nested `shipments` the
+  detail page also needs to redraw.
+- **Cancel and Complete ask for confirmation** (a simple browser
+  `confirm()` dialog) before sending the request, since both are
+  irreversible.
+- **Client-side validation only checks that required fields are
+  non-empty** before submit; all business-rule validation (BR-1, BR-5,
+  BR-6, etc.) is left entirely to the backend's field-level 400
+  responses.
+- **Quantities and prices are displayed exactly as the API returns
+  them** (e.g. `"300.00"`) — no client-side number formatting,
+  rounding, or thousands separators.
+
 **Files:** `frontend/src/pages/Trades.tsx`, `frontend/src/pages/
-TradeDetail.tsx`, `frontend/src/components/TradeForm.tsx`.
+TradeDetail.tsx`, `frontend/src/components/TradeForm.tsx`,
+`frontend/src/api/referenceData.ts`.
 
 **Manual check:** create, confirm, and cancel a trade entirely through the
 UI; trigger a validation error (e.g. price = 0) and confirm it renders
@@ -637,6 +686,14 @@ on the Trades, Logistics and Inventory screens.
 
 ## Cross-cutting, applies to every phase
 
+- **Known tooling gap:** the backend and frontend workspaces are on
+  different major versions of Vitest — `backend/package.json` has
+  `vitest@^2.1.8`, `frontend/package.json` has `vitest@^5.0.2` (added
+  independently in Phase 5). Not a problem for either workspace's own
+  tests today (each runs its own config), but the two should be aligned
+  to the same major version later, to keep test config/behavior
+  consistent across the repo and avoid two sets of Vitest docs/APIs to
+  remember.
 - A global Express error-handling middleware (`backend/src/shared/
   errorHandler.ts`), registered last in `app.ts`, catches every otherwise-
   unhandled error and returns a generic 500 JSON body with no internal

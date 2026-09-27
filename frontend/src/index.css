@@ -1,12 +1,29 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
+  /* Brand palette per ctrm-standards rule 9 (.claude/skills/ctrm-standards/SKILL.md):
+     navy sidebar, white page background, royal blue for primary actions
+     and links, gold for highlights only (never as body text on white —
+     it's used here purely as backgrounds/borders/accents), dark body
+     text. This is a fixed light palette, not a system dark theme. */
+  --text: #1f2937;
+  --text-h: #0b2545;
+  --text-muted: #5b6472;
+  --bg: #ffffff;
+  --surface: #f5f6f8;
+  --border: #d8dce3;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+
+  --accent: #1d4ed8;
+  --accent-hover: #17399e;
+  --accent-bg: rgba(29, 78, 216, 0.08);
+  --accent-border: rgba(29, 78, 216, 0.35);
+
+  --gold: #c9a227;
+  --gold-bg: rgba(201, 162, 39, 0.16);
+  --gold-border: rgba(201, 162, 39, 0.55);
+
+  --sidebar-bg: #0b2545;
+  --sidebar-text: #e7ecf5;
+  --sidebar-text-muted: #a9b4c7;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -14,26 +31,13 @@
 
   font: 16px/145% var(--sans);
   letter-spacing: 0.18px;
-  color-scheme: light dark;
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-  }
 }
 
 #root {
@@ -55,8 +59,12 @@ h2 {
 }
 
 h1 {
+  /* "Key headings" get a gold accent per rule 9 — as a border, never as
+     the text color (gold-on-white is hard to read). */
   font-size: 28px;
-  margin: 0 0 16px;
+  margin: 0 0 20px;
+  padding-bottom: 10px;
+  border-bottom: 3px solid var(--gold);
 }
 
 h2 {
@@ -77,4 +85,90 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+/* Shared component primitives (buttons, tables, alert banners) — reused
+   across pages/forms so every screen restyles from the same rule-9
+   tokens instead of each defining its own. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.banner {
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: 10px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table thead th {
+  background: var(--surface);
+  color: var(--text-h);
+  font-weight: 600;
+  border-bottom: 2px solid var(--border);
+}
+
+.data-table tbody tr:hover {
+  background: var(--accent-bg);
+}
+
+.data-table th.col-numeric,
+.data-table td.col-numeric {
+  text-align: right;
 }

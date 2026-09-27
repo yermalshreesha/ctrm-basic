@@ -4,6 +4,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
 import { Logistics } from "./pages/Logistics";
 import { Trades } from "./pages/Trades";
+import { TradeDetail } from "./pages/TradeDetail";
 import "./App.css";
 
 function App() {
@@ -14,6 +15,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/trades" element={<Trades />} />
+          <Route path="/trades/new" element={<TradeDetail />} />
+          <Route path="/trades/:id" element={<TradeDetail />} />
           <Route path="/logistics" element={<Logistics />} />
           <Route path="/inventory" element={<Inventory />} />
         </Routes>

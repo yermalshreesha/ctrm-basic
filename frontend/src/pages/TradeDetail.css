@@ -1,0 +1,39 @@
+.trade-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px 32px;
+  max-width: 720px;
+  margin: 0 0 24px;
+}
+
+.trade-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trade-summary dt {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-h);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trade-summary dd {
+  margin: 0;
+  font-size: 15px;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.shipments-note {
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 14px;
+}

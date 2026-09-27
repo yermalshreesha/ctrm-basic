@@ -1,7 +1,7 @@
 .sidebar {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
   padding: 24px 16px;
   box-sizing: border-box;
 }
@@ -10,7 +10,8 @@
   font-family: var(--heading);
   font-weight: 600;
   font-size: 20px;
-  color: var(--text-h);
+  color: #ffffff;
+  letter-spacing: 0.4px;
   margin-bottom: 24px;
 }
 
@@ -25,18 +26,23 @@
 
 .sidebar a {
   display: block;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border-radius: 6px;
-  color: var(--text);
+  border-left: 3px solid transparent;
+  color: var(--sidebar-text-muted);
   text-decoration: none;
 }
 
 .sidebar a:hover {
-  background: var(--code-bg);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sidebar-text);
 }
 
 .sidebar a.active {
-  background: var(--accent-bg);
-  color: var(--accent);
-  font-weight: 500;
+  /* Rule 9: gold highlights the active menu item — safe as text color
+     here since the sidebar background is navy, not white. */
+  background: var(--gold-bg);
+  border-left-color: var(--gold);
+  color: var(--gold);
+  font-weight: 600;
 }
