@@ -24,3 +24,15 @@ description: Apply the ctrm-basic project's design and coding standards. Use whe
 7. Tests: every business rule has at least one automated test.
 8. Secrets: never print or log passwords, connection strings or keys,
    including in error messages.
+9. Look and feel:
+   - Colors: navy blue (#0B2545) sidebar, white (#FFFFFF) page
+     background, royal blue (#1D4ED8) for primary actions and links,
+     gold (#C9A227) for highlights (active menu item, key headings,
+     accents). Dark text (#1F2937) on light backgrounds.
+   - Never put gold text on white; it is hard to read. Use gold for
+     backgrounds, borders and accents instead.
+   - Define colors once as CSS variables and use them everywhere.
+   - Forms: label above each input, inputs the same width, fields
+     grouped in sections (e.g. Commodity & Counterparty, Quantity &
+     Price, Delivery period), required fields marked, clear spacing,
+     and one clear primary button.
