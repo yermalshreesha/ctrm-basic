@@ -1,0 +1,74 @@
+name: CI
+
+# Run on every pull request targeting main, and on every push to main
+# (e.g. after a PR merges).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Read-only by default: this workflow only checks out code and runs
+# tests, it never needs to write to the repo, open PRs, etc.
+permissions:
+  contents: read
+
+# Dummy credentials — fine for a throwaway CI database that only ever
+# lives for the duration of one job. The database name must end in
+# ctrm_test: backend/test/setup.ts refuses to run tests otherwise, so a
+# misconfigured URL can never truncate the wrong database.
+env:
+  DATABASE_URL: postgresql://ctrm:ctrm@localhost:5432/ctrm_test
+  TEST_DATABASE_URL: postgresql://ctrm:ctrm@localhost:5432/ctrm_test
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # A throwaway Postgres 16 container, started before the job's steps
+    # and torn down after. It only needs the ctrm_test database — CI
+    # never touches ctrm_dev.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ctrm
+          POSTGRES_PASSWORD: ctrm
+          POSTGRES_DB: ctrm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ctrm -d ctrm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      # migrate deploy only applies pending migrations — it never drops
+      # or resets the database, unlike `prisma migrate reset`.
+      - name: Apply database migrations
+        run: npm run db:test:migrate
+
+      - name: Run tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
