@@ -355,12 +355,12 @@ Warehouse in this version; rows come from a seed script. See section
 - `DELETE /api/shipments/:id` — deletes a shipment, only while PLANNED (409 otherwise); this is how a PLANNED shipment that's blocking its trade's cancellation (BR-10) is cleared — never done automatically
 
 ### Inventory
-- `GET /api/inventory` — current InventoryBalance rows, joined with warehouse/commodity names
-- `GET /api/inventory/movements` — ledger, filterable by `warehouseId`, `commodityId`
+- `GET /api/inventory` — current InventoryBalance rows, joined with warehouse/commodity names; excludes rows whose `quantityMt` is exactly zero (a warehouse+commodity pair drawn all the way down has no meaningful stock to show) — compared as a `Prisma.Decimal` value against the database column, in the backend, never as a string and never in the browser
+- `GET /api/inventory/movements` — ledger, filterable by `warehouseId`, `commodityId`; unaffected by the zero-balance exclusion above — every movement is listed regardless of the balance it left behind, since it's a historical fact, not a current-stock figure
 
 ### Dashboard
 - `GET /api/dashboard/positions` — net position (bought − sold, in MT) per commodity, computed from CONFIRMED + COMPLETED trades; only commodities with at least one CONFIRMED or COMPLETED trade are listed (a commodity with none — no trades at all, or only DRAFT/CANCELLED ones — is omitted, not reported at zero)
-- `GET /api/dashboard/inventory-summary` — stock by warehouse (same data as /api/inventory, shaped for the dashboard widget)
+- `GET /api/dashboard/inventory-summary` — stock by warehouse (same data as /api/inventory, including the zero-balance exclusion above, shaped for the dashboard widget)
 - `GET /api/dashboard/shipments-in-progress` — shipments currently PLANNED or IN_TRANSIT
 
 All endpoints return `404` for a missing id, `400` for validation
@@ -401,8 +401,16 @@ dropdown options, populated from `GET /api/counterparties` and `GET
   rejection on create/edit (BR-4a) and an insufficient-stock rejection
   on Depart (BR-3) are both shown as field-level errors on quantity.
 - **Inventory** — table of current stock: warehouse, commodity,
-  quantity MT; below it, a movements ledger (date, warehouse,
-  commodity, +/− MT, linked shipment) for traceability.
+  quantity MT (rows with a zero balance are omitted — see `GET
+  /api/inventory` in section 7); below it, a movements ledger (date,
+  warehouse, commodity, +/− MT, linked shipment) for traceability —
+  the ledger lists every movement regardless of the resulting
+  balance, unaffected by the current-stock table's zero-balance
+  exclusion.
+
+All table links use clear link text (e.g. "View trade", "View
+shipment"), never a raw id or an unrelated data value repurposed as
+the link (standard 9).
 
 ## 9. Acceptance criteria (mapped to "Success looks like")
 

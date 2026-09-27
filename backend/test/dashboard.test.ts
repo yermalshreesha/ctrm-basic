@@ -180,6 +180,19 @@ describe("dashboard", () => {
       });
       expect(dashboardRes.body).toEqual(inventoryRes.body);
     });
+
+    it("excludes a balance of exactly zero, same as GET /api/inventory", async () => {
+      const warehouse = await createWarehouse();
+      const commodity = await createCommodity();
+      await prisma.inventoryBalance.create({
+        data: { warehouseId: warehouse.id, commodityId: commodity.id, quantityMt: "0.000" },
+      });
+
+      const res = await request(app).get("/api/dashboard/inventory-summary");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
   });
 
   describe("GET /api/dashboard/shipments-in-progress", () => {

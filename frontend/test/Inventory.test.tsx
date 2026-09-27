@@ -143,7 +143,7 @@ describe("Inventory", () => {
     await waitFor(() => expect(screen.getByText("Rotterdam Silo")).toBeInTheDocument());
   });
 
-  it("links each movement row to its shipment", async () => {
+  it("links each movement row to its shipment, via clear link text, never the raw shipment id", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === "/api/inventory") return jsonResponse(200, []);
       if (url === "/api/inventory/movements") return jsonResponse(200, [inMovement]);
@@ -153,8 +153,10 @@ describe("Inventory", () => {
 
     renderInventory();
 
-    await waitFor(() => expect(screen.getByRole("link", { name: "s1" })).toBeInTheDocument());
-    expect(screen.getByRole("link", { name: "s1" })).toHaveAttribute("href", "/logistics/s1");
+    await waitFor(() => expect(screen.getByRole("link", { name: "View shipment" })).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "View shipment" })).toHaveAttribute("href", "/logistics/s1");
+    expect(screen.queryByRole("link", { name: "s1" })).not.toBeInTheDocument();
+    expect(screen.queryByText("s1")).not.toBeInTheDocument();
   });
 
   it("renders each movement's date as a readable local date/time, not the raw timestamp", async () => {

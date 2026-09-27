@@ -36,3 +36,5 @@ description: Apply the ctrm-basic project's design and coding standards. Use whe
      grouped in sections (e.g. Commodity & Counterparty, Quantity &
      Price, Delivery period), required fields marked, clear spacing,
      and one clear primary button.
+   - Links in tables use clear text ("View trade", "View shipment"),
+     never raw ids or unrelated words, styled with the blue link color.

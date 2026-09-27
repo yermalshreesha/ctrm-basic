@@ -103,7 +103,7 @@ export function Inventory() {
                   <td>{movement.commodityName}</td>
                   <td className="col-numeric">{movement.quantityMt}</td>
                   <td>
-                    <Link to={`/logistics/${movement.shipmentId}`}>{movement.shipmentId}</Link>
+                    <Link to={`/logistics/${movement.shipmentId}`}>View shipment</Link>
                   </td>
                 </tr>
               ))}

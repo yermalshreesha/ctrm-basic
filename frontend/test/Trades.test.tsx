@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Trades } from "../src/pages/Trades";
@@ -60,6 +60,24 @@ describe("Trades", () => {
 
     // Header row + 2 trade rows, in API order (no client re-sorting).
     await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
+  });
+
+  it("links each row to its trade detail page via clear link text, never the commodity name", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades();
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
+    const table = within(screen.getByRole("table"));
+
+    expect(table.getByText("Wheat")).toBeInTheDocument();
+    expect(table.queryByRole("link", { name: "Wheat" })).not.toBeInTheDocument();
+    expect(table.getByRole("link", { name: "View trade" })).toHaveAttribute("href", "/trades/t1");
   });
 
   it("shows a clear error message when the trades request fails entirely (network error)", async () => {

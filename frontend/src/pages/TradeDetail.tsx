@@ -261,21 +261,21 @@ export function TradeDetail() {
           <caption>Shipments</caption>
           <thead>
             <tr>
-              <th>ID</th>
               <th>Status</th>
               <th>Quantity (MT)</th>
               <th>Warehouse</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {trade.shipments.map((shipment) => (
               <tr key={shipment.id}>
-                <td>
-                  <Link to={`/logistics/${shipment.id}`}>{shipment.id}</Link>
-                </td>
                 <td>{shipment.status}</td>
                 <td>{shipment.quantityMt}</td>
                 <td>{shipment.warehouseName}</td>
+                <td>
+                  <Link to={`/logistics/${shipment.id}`}>View shipment</Link>
+                </td>
               </tr>
             ))}
           </tbody>

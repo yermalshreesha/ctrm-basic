@@ -119,17 +119,14 @@ export function Logistics() {
               <th>Planned</th>
               <th>Actual</th>
               <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {shipments.map((shipment) => (
               <tr key={shipment.id}>
-                <td>
-                  <Link to={`/trades/${shipment.tradeId}`}>{shipment.trade.direction}</Link>
-                </td>
-                <td>
-                  <Link to={`/logistics/${shipment.id}`}>{shipment.commodityName}</Link>
-                </td>
+                <td>{shipment.trade.direction}</td>
+                <td>{shipment.commodityName}</td>
                 <td>{shipment.warehouseName}</td>
                 <td>{shipment.transportMode}</td>
                 <td>{shipment.origin}</td>
@@ -141,6 +138,10 @@ export function Logistics() {
                   {shipment.actualDepartureDate ?? "—"} – {shipment.actualArrivalDate ?? "—"}
                 </td>
                 <td>{shipment.status}</td>
+                <td>
+                  <Link to={`/trades/${shipment.tradeId}`}>View trade</Link>{" "}
+                  <Link to={`/logistics/${shipment.id}`}>View shipment</Link>
+                </td>
               </tr>
             ))}
           </tbody>

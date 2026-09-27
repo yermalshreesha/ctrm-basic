@@ -225,8 +225,18 @@ export interface ListMovementsFilters {
   commodityId?: string;
 }
 
+// Excludes balances of exactly zero — a warehouse+commodity pair that's
+// been fully drawn down has no meaningful stock to show on the Inventory
+// screen or the dashboard's inventory-by-warehouse widget (both call this
+// function; GET /api/dashboard/inventory-summary reuses it as-is, per
+// dashboard/routes.ts). The comparison is a Prisma.Decimal value compared
+// against the DECIMAL(12,3) column in the database — never a string
+// comparison, and never done in the browser. The movements ledger
+// (listMovements, below) is unaffected: it lists every movement
+// regardless of the balance it left behind.
 export function listBalances() {
   return prisma.inventoryBalance.findMany({
+    where: { quantityMt: { not: new Prisma.Decimal(0) } },
     include: { warehouse: true, commodity: true },
     orderBy: [{ warehouseId: "asc" }, { commodityId: "asc" }],
   });

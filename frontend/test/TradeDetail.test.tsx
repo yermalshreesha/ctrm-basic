@@ -255,7 +255,7 @@ describe("TradeDetail", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument());
   });
 
-  it("renders a CONFIRMED trade's shipments as a table with a link to each shipment's detail page", async () => {
+  it("renders a CONFIRMED trade's shipments as a table with a clearly-labelled link to each shipment's detail page", async () => {
     const shipment = {
       id: "s1",
       tradeId: "t1",
@@ -281,7 +281,8 @@ describe("TradeDetail", () => {
     renderDetail("t1");
     await waitForLoaded();
 
-    expect(screen.getByRole("link", { name: "s1" })).toHaveAttribute("href", "/logistics/s1");
+    expect(screen.queryByRole("link", { name: "s1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View shipment" })).toHaveAttribute("href", "/logistics/s1");
     expect(screen.getByText("Rotterdam Silo")).toBeInTheDocument();
     expect(screen.getByText("100.000")).toBeInTheDocument();
   });

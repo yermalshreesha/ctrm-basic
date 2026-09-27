@@ -153,14 +153,13 @@ export function Trades() {
               <th>Currency</th>
               <th>Delivery period</th>
               <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {trades.map((trade) => (
               <tr key={trade.id}>
-                <td>
-                  <Link to={`/trades/${trade.id}`}>{commodityName(trade.commodityId)}</Link>
-                </td>
+                <td>{commodityName(trade.commodityId)}</td>
                 <td>{trade.direction}</td>
                 <td>{counterpartyName(trade.counterpartyId)}</td>
                 <td className="col-numeric">{trade.quantityMt}</td>
@@ -170,6 +169,9 @@ export function Trades() {
                   {trade.deliveryPeriodStart} – {trade.deliveryPeriodEnd}
                 </td>
                 <td>{trade.status}</td>
+                <td>
+                  <Link to={`/trades/${trade.id}`}>View trade</Link>
+                </td>
               </tr>
             ))}
           </tbody>

@@ -661,6 +661,33 @@ describe("inventory read endpoints", () => {
         quantityMt: "12.345",
       });
     });
+
+    it("excludes a balance of exactly 0.000", async () => {
+      const warehouse = await createWarehouse();
+      const commodity = await createCommodity();
+      await prisma.inventoryBalance.create({
+        data: { warehouseId: warehouse.id, commodityId: commodity.id, quantityMt: "0.000" },
+      });
+
+      const res = await request(app).get("/api/inventory");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it("includes a balance of 0.001", async () => {
+      const warehouse = await createWarehouse();
+      const commodity = await createCommodity();
+      await prisma.inventoryBalance.create({
+        data: { warehouseId: warehouse.id, commodityId: commodity.id, quantityMt: "0.001" },
+      });
+
+      const res = await request(app).get("/api/inventory");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({ quantityMt: "0.001" });
+    });
   });
 
   describe("GET /api/inventory/movements", () => {
@@ -705,6 +732,34 @@ describe("inventory read endpoints", () => {
     it("rejects a malformed warehouseId filter with 400", async () => {
       const res = await request(app).get("/api/inventory/movements?warehouseId=not-a-uuid");
       expect(res.status).toBe(400);
+    });
+
+    // Unlike GET /api/inventory (see above), the ledger is unaffected by
+    // the zero-balance exclusion: a movement that leaves a balance at
+    // exactly zero is still listed, since it's a historical fact, not a
+    // current-stock figure.
+    it("still lists a movement that leaves the resulting balance at exactly zero", async () => {
+      const warehouse = await createWarehouse();
+      const commodity = await createCommodity();
+      const trade = await createConfirmedTrade();
+      await recordMovement({
+        warehouseId: warehouse.id,
+        commodityId: commodity.id,
+        shipmentId: await createShipmentId(trade, warehouse),
+        quantityMt: "20.000",
+      });
+      const result = await recordMovement({
+        warehouseId: warehouse.id,
+        commodityId: commodity.id,
+        shipmentId: await createShipmentId(trade, warehouse),
+        quantityMt: "-20.000",
+      });
+      expect(result.ok).toBe(true);
+
+      const res = await request(app).get("/api/inventory/movements");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
     });
   });
 });

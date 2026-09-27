@@ -90,7 +90,7 @@ describe("Logistics", () => {
     expect(table.getByText("PLANNED")).toBeInTheDocument();
   });
 
-  it("links each row to its shipment detail page and to its parent trade", async () => {
+  it("links each row to its shipment detail page and to its parent trade, via clear link text", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === "/api/warehouses") return jsonResponse(200, warehouses);
       if (url.startsWith("/api/shipments")) return jsonResponse(200, [shipment]);
@@ -101,10 +101,16 @@ describe("Logistics", () => {
     renderLogistics();
     await waitFor(() => expect(screen.getByText("Wheat")).toBeInTheDocument());
 
-    expect(screen.getByRole("link", { name: "Wheat" })).toHaveAttribute("href", "/logistics/s1");
-    expect(screen.getByRole("link", { name: "BUY" })).toHaveAttribute("href", "/trades/t1");
+    // The Trade/Commodity data cells are plain text; only the Actions
+    // column's links carry navigation (ctrm-standards rule 9 — clear
+    // link text, never a raw id or an unrelated value repurposed as
+    // the link).
+    expect(screen.queryByRole("link", { name: "Wheat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "BUY" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View shipment" })).toHaveAttribute("href", "/logistics/s1");
+    expect(screen.getByRole("link", { name: "View trade" })).toHaveAttribute("href", "/trades/t1");
 
-    fireEvent.click(screen.getByRole("link", { name: "Wheat" }));
+    fireEvent.click(screen.getByRole("link", { name: "View shipment" }));
     await waitFor(() => expect(screen.getByText("Shipment detail page")).toBeInTheDocument());
   });
 
