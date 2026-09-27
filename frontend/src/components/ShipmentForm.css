@@ -1,0 +1,74 @@
+/* Rule 9 (ctrm-standards): label above each input, inputs the same
+   width, fields grouped into sections, required fields marked, clear
+   spacing, one clear primary button. Same primitives as TradeForm.css. */
+
+.shipment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 480px;
+}
+
+.shipment-form .form-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0;
+  padding: 8px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.shipment-form .form-section legend {
+  padding: 0 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.shipment-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shipment-form .field label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.shipment-form .required-mark::after {
+  content: " *";
+  color: var(--accent);
+}
+
+.shipment-form .field input,
+.shipment-form .field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.shipment-form .field input:focus,
+.shipment-form .field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.shipment-form .field-error {
+  display: block;
+  width: fit-content;
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text);
+  font-size: 13px;
+}

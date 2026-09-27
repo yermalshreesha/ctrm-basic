@@ -1,0 +1,61 @@
+.shipment-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px 32px;
+  max-width: 720px;
+  margin: 0 0 24px;
+}
+
+.shipment-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shipment-summary dt {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-h);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.shipment-summary dd {
+  margin: 0;
+  font-size: 15px;
+}
+
+.shipment-trade-context {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.actions {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.actions .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.actions .field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.actions .field input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+}

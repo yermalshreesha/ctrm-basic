@@ -3,7 +3,7 @@
 // form and to resolve names for display elsewhere.
 
 import { apiClient } from "./client";
-import type { Commodity, Counterparty } from "./types";
+import type { Commodity, Counterparty, Warehouse } from "./types";
 
 export function listCommodities() {
   return apiClient.get<Commodity[]>("/commodities");
@@ -11,4 +11,8 @@ export function listCommodities() {
 
 export function listCounterparties() {
   return apiClient.get<Counterparty[]>("/counterparties");
+}
+
+export function listWarehouses() {
+  return apiClient.get<Warehouse[]>("/warehouses");
 }

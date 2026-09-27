@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listCommodities, listCounterparties } from "../src/api/referenceData";
+import { listCommodities, listCounterparties, listWarehouses } from "../src/api/referenceData";
 
 function mockFetchOnce(body: unknown) {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -33,6 +33,16 @@ describe("referenceData", () => {
     const result = await listCounterparties();
 
     expect(fetchMock).toHaveBeenCalledWith("/api/counterparties", expect.anything());
+    expect(result).toEqual(body);
+  });
+
+  it("listWarehouses calls GET /api/warehouses and returns the parsed array", async () => {
+    const body = [{ id: "w1", name: "Rotterdam Silo", location: "Rotterdam", createdAt: "", updatedAt: "" }];
+    const fetchMock = mockFetchOnce(body);
+
+    const result = await listWarehouses();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/warehouses", expect.anything());
     expect(result).toEqual(body);
   });
 });

@@ -23,6 +23,7 @@ function buildTrade(overrides: Partial<TradeWithShipments> = {}): TradeWithShipm
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     shipments: [],
+    remainingQuantityMt: "300.000",
     ...overrides,
   };
 }
@@ -254,7 +255,7 @@ describe("TradeDetail", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument());
   });
 
-  it("renders a CONFIRMED trade's shipments as a read-only table with no links or add-shipment control", async () => {
+  it("renders a CONFIRMED trade's shipments as a table with a link to each shipment's detail page", async () => {
     const shipment = {
       id: "s1",
       tradeId: "t1",
@@ -275,17 +276,39 @@ describe("TradeDetail", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
-    mockFetch(buildTrade({ status: "CONFIRMED", shipments: [shipment] }));
+    mockFetch(buildTrade({ status: "CONFIRMED", shipments: [shipment], remainingQuantityMt: "200.000" }));
 
     renderDetail("t1");
     await waitForLoaded();
 
-    expect(screen.getByText("s1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "s1" })).toHaveAttribute("href", "/logistics/s1");
     expect(screen.getByText("Rotterdam Silo")).toBeInTheDocument();
     expect(screen.getByText("100.000")).toBeInTheDocument();
-    expect(screen.getByText("Adding shipments arrives in Phase 7.")).toBeInTheDocument();
-    expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
+
+  it("shows the trade's remainingQuantityMt and an Add shipment link for a CONFIRMED trade", async () => {
+    mockFetch(buildTrade({ status: "CONFIRMED", remainingQuantityMt: "199.700" }));
+    renderDetail("t1");
+    await waitForLoaded();
+
+    expect(screen.getByText(/Remaining to ship: 199.700 MT/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add shipment" })).toHaveAttribute(
+      "href",
+      "/logistics/new?tradeId=t1",
+    );
+  });
+
+  it.each(["DRAFT", "COMPLETED", "CANCELLED"] as const)(
+    "hides the Add shipment link and remaining-quantity line for a %s trade",
+    async (status) => {
+      mockFetch(buildTrade({ status }));
+      renderDetail("t1");
+      await waitForLoaded();
+
+      expect(screen.queryByRole("link", { name: "Add shipment" })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Remaining to ship/)).not.toBeInTheDocument();
+    },
+  );
 
   it("displays quantityMt and price exactly as the API returns them", async () => {
     mockFetch(buildTrade({ status: "CONFIRMED", quantityMt: "1200.500", price: "45.75" }));

@@ -9,7 +9,6 @@ import { apiClient } from "../api/client";
 import { listCommodities, listCounterparties } from "../api/referenceData";
 import type { Commodity, Counterparty, Trade, TradeDirection, TradeStatus } from "../api/types";
 import { Banner } from "../components/Banner";
-import "./Trades.css";
 
 const STATUSES: TradeStatus[] = ["DRAFT", "CONFIRMED", "COMPLETED", "CANCELLED"];
 const DIRECTIONS: TradeDirection[] = ["BUY", "SELL"];

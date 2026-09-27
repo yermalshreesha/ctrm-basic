@@ -9,7 +9,7 @@
 // decision, Phase 6).
 
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, apiClient } from "../api/client";
 import { listCommodities, listCounterparties } from "../api/referenceData";
 import type { Commodity, Counterparty, FieldError, Trade, TradeWithShipments } from "../api/types";
@@ -270,7 +270,9 @@ export function TradeDetail() {
           <tbody>
             {trade.shipments.map((shipment) => (
               <tr key={shipment.id}>
-                <td>{shipment.id}</td>
+                <td>
+                  <Link to={`/logistics/${shipment.id}`}>{shipment.id}</Link>
+                </td>
                 <td>{shipment.status}</td>
                 <td>{shipment.quantityMt}</td>
                 <td>{shipment.warehouseName}</td>
@@ -279,7 +281,11 @@ export function TradeDetail() {
           </tbody>
         </table>
       )}
-      {trade.status === "CONFIRMED" && <p className="shipments-note">Adding shipments arrives in Phase 7.</p>}
+      {trade.status === "CONFIRMED" && (
+        <p className="shipments-note">
+          Remaining to ship: {trade.remainingQuantityMt} MT — <Link to={`/logistics/new?tradeId=${trade.id}`}>Add shipment</Link>
+        </p>
+      )}
     </div>
   );
 }

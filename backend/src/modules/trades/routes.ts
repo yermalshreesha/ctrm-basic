@@ -66,9 +66,20 @@ tradesRouter.get(
       return;
     }
 
+    // Remaining-to-ship (Trade detail / Shipment create pages, Phase 7):
+    // the trade's own quantity minus every one of its shipments'
+    // quantities, regardless of shipment status — the same population
+    // BR-4a's assertWithinTradeQuantity sums in shipments/service.ts.
+    // Computed here from the raw Decimal values, before serialization, so
+    // it's never redone as float arithmetic in the browser.
+    const remainingQuantityMt = trade.shipments
+      .reduce((remaining, shipment) => remaining.minus(shipment.quantityMt), trade.quantityMt)
+      .toFixed(3);
+
     res.status(200).json({
       ...serializeTrade(trade),
       shipments: trade.shipments.map(serializeShipment),
+      remainingQuantityMt,
     });
   }),
 );

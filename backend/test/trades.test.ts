@@ -440,6 +440,72 @@ describe("trades", () => {
       expect(res.status).toBe(400);
     });
 
+    it("GET /api/trades/:id returns remainingQuantityMt as trade quantity minus every shipment's quantity", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            quantityMt: "500.000",
+          }),
+        );
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await createShipmentViaApi(created.body.id, warehouse.id, "100.100");
+      await createShipmentViaApi(created.body.id, warehouse.id, "200.200");
+
+      const res = await request(app).get(`/api/trades/${created.body.id}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.remainingQuantityMt).toBe("199.700");
+    });
+
+    it("GET /api/trades/:id returns remainingQuantityMt equal to the trade's own quantity when it has no shipments", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            quantityMt: "42.500",
+          }),
+        );
+
+      const res = await request(app).get(`/api/trades/${created.body.id}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.remainingQuantityMt).toBe("42.500");
+    });
+
+    it("GET /api/trades/:id returns remainingQuantityMt counting shipments of any status (one DELIVERED, one PLANNED)", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const warehouse = await createWarehouse();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            quantityMt: "500.000",
+          }),
+        );
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      const delivered = await createShipmentViaApi(created.body.id, warehouse.id, "100.000");
+      await deliverFully(delivered.id);
+      await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
+
+      const res = await request(app).get(`/api/trades/${created.body.id}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.remainingQuantityMt).toBe("350.000");
+    });
+
     it("GET /api/trades lists all trades", async () => {
       const commodity = await createCommodity();
       const counterparty = await createCounterparty();

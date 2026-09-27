@@ -59,10 +59,13 @@ export interface Trade {
   updatedAt: string;
 }
 
-// GET /api/trades/:id nests the trade's shipments; GET /api/trades (list)
-// does not — see trades/service.ts's getTradeByIdWithShipments.
+// GET /api/trades/:id nests the trade's shipments and adds
+// remainingQuantityMt (trade.quantityMt minus every shipment's
+// quantityMt, computed backend-side — BR-1, Phase 7); GET /api/trades
+// (list) has neither — see trades/routes.ts.
 export interface TradeWithShipments extends Trade {
   shipments: Shipment[];
+  remainingQuantityMt: string;
 }
 
 export type TransportMode = "TRUCK" | "RAIL" | "VESSEL";

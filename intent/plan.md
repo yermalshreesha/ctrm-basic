@@ -645,8 +645,52 @@ next to the field, not as a generic alert.
 detail/form (create under a trade, Depart/Deliver actions, BR-4a and BR-3
 errors shown as field-level errors on quantity, per spec §8).
 
+**Decisions confirmed with the product owner for this phase
+(2026-09-27):**
+- **Remaining quantity to ship**, shown on both the Trade detail page and
+  the Shipment create/detail page, is computed backend-side, never in the
+  browser: `GET /api/trades/:id` now returns a `remainingQuantityMt` field
+  (`trade.quantityMt` minus the sum of every one of its shipments'
+  `quantityMt`, regardless of shipment status — the same population BR-4a's
+  `assertWithinTradeQuantity` sums in `shipments/service.ts` — computed
+  from the raw `Prisma.Decimal` values, before serialization). This is a
+  small backend touch outside this phase's originally-scoped file list
+  (see Files, below); no other Trade endpoint's response shape changes.
+- **Trade detail page (Phase 6) gains three things in this phase, rather
+  than as a separate Phase 6 revision:** a "Remaining to ship: X MT" line
+  and an "Add shipment" link (`/logistics/new?tradeId=<id>`), both shown
+  only while the trade is CONFIRMED (replacing the old "Adding shipments
+  arrives in Phase 7" note); and the shipments table's rows now link to
+  `/logistics/:id`.
+- **Routes:** `/logistics` (list), `/logistics/new?tradeId=<id>` (create)
+  and `/logistics/:id` (detail/edit), the latter two both rendered by
+  `ShipmentDetail.tsx` — same `/trades/new` + `/trades/:id` pattern as
+  Phase 6. Visiting `/logistics/new` with no `tradeId`, or with a
+  `tradeId` that doesn't exist, shows a clear message instead of the form.
+- **Origin/destination auto-fill** (spec §3's warehouse-drift concern):
+  selecting a warehouse fills `destination` (BUY trade) or `origin` (SELL
+  trade) with the warehouse's name, and keeps doing so on every later
+  warehouse change — until the user types into that field themselves, at
+  which point it is never overwritten again.
+- **BR-3's insufficient-stock rejection** (`insufficient_stock` — a
+  message-only 409, unlike `validation_failed`'s `fields` array) is
+  synthesized into a field-level error on `quantityMt` client-side in
+  `ShipmentDetail.tsx`, so it renders next to the quantity field exactly
+  like BR-4a's 400, per spec §8.
+- **State after an action:** Depart/Deliver/Delete/Save update the page
+  directly from that action's own response (every Shipment action
+  endpoint already returns the full serialized shipment, unlike Trade's
+  confirm/cancel/complete) — no extra `GET /api/shipments/:id` re-fetch.
+  Save additionally re-fetches `GET /api/trades/:tradeId` afterward, since
+  editing a PLANNED shipment's `quantityMt` changes the trade's
+  `remainingQuantityMt`.
+
 **Files:** `frontend/src/pages/Logistics.tsx`, `frontend/src/pages/
-ShipmentDetail.tsx`, `frontend/src/components/ShipmentForm.tsx`.
+ShipmentDetail.tsx`, `frontend/src/components/ShipmentForm.tsx`,
+`frontend/src/pages/TradeDetail.tsx` (the three additions above),
+`frontend/src/api/referenceData.ts` (add `listWarehouses`),
+`backend/src/modules/trades/routes.ts` (`remainingQuantityMt` on `GET
+/api/trades/:id`), `backend/test/trades.test.ts`.
 
 **Manual check:** run a full BUY and SELL trade lifecycle through the UI
 only (no curl), watching the Inventory screen (Phase 8) or `/api/inventory`
