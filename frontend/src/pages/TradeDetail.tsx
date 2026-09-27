@@ -13,6 +13,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, apiClient } from "../api/client";
 import { listCommodities, listCounterparties } from "../api/referenceData";
 import type { Commodity, Counterparty, FieldError, Trade, TradeWithShipments } from "../api/types";
+import { Banner } from "../components/Banner";
 import { TradeForm, type TradeFormValues } from "../components/TradeForm";
 import "./TradeDetail.css";
 
@@ -62,6 +63,11 @@ export function TradeDetail() {
 
   const refetch = useCallback(() => {
     if (!id) return;
+    // Intentional: reset to "loading" synchronously before the fetch
+    // starts, so Confirm/Cancel/Complete/Save all show a loading state
+    // right away instead of the previous trade's data lingering while
+    // the refetch is in flight — the oxlint set-state-in-effect warning
+    // is expected here (refetch is invoked from the effect below).
     setLoadState("loading");
     apiClient
       .get<TradeWithShipments>(`/trades/${id}`)
@@ -79,9 +85,21 @@ export function TradeDetail() {
       });
   }, [id]);
 
+  // Intentional: this effect's only job is to kick off the fetch on
+  // mount/id-change; refetch's own setLoadState("loading") call (above)
+  // is what oxlint is flagging here, not a separate render-only state
+  // derivation — the warning is expected.
   useEffect(() => {
     if (!isNew) refetch();
   }, [isNew, refetch]);
+
+  // Intentional: a stale action/field error from a previous trade
+  // shouldn't linger when the user navigates to a different trade id —
+  // the oxlint set-state-in-effect warning is expected here too.
+  useEffect(() => {
+    setActionError(null);
+    setFieldErrors([]);
+  }, [id]);
 
   function handleCreate(values: TradeFormValues) {
     setSubmitting(true);
@@ -151,11 +169,7 @@ export function TradeDetail() {
     return (
       <div>
         <h1>New trade</h1>
-        {actionError && (
-          <p role="alert" className="banner">
-            {actionError}
-          </p>
-        )}
+        {actionError && <Banner onDismiss={() => setActionError(null)}>{actionError}</Banner>}
         <TradeForm onSubmit={handleCreate} submitting={submitting} fieldErrors={fieldErrors} />
       </div>
     );
@@ -164,21 +178,13 @@ export function TradeDetail() {
   if (loadState === "loading") return <p>Loading trade...</p>;
   if (loadState === "not_found") return <p>Trade not found</p>;
   if (loadState === "error")
-    return (
-      <p role="alert" className="banner">
-        {loadErrorMessage}
-      </p>
-    );
+    return <Banner onDismiss={() => setLoadErrorMessage(null)}>{loadErrorMessage}</Banner>;
   if (!trade) return null;
 
   return (
     <div>
       <h1>Trade</h1>
-      {actionError && (
-        <p role="alert" className="banner">
-          {actionError}
-        </p>
-      )}
+      {actionError && <Banner onDismiss={() => setActionError(null)}>{actionError}</Banner>}
 
       {trade.status === "DRAFT" ? (
         <TradeForm

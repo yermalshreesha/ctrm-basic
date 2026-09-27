@@ -77,6 +77,7 @@ export function TradeForm({ initial, onSubmit, submitting, fieldErrors }: TradeF
   const [values, setValues] = useState<TradeFormValues>(() => (initial ? valuesFromTrade(initial) : emptyValues()));
   const [commodities, setCommodities] = useState<Commodity[]>([]);
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
+  const [referenceDataError, setReferenceDataError] = useState<string | null>(null);
   const [requiredErrors, setRequiredErrors] = useState<Partial<Record<keyof TradeFormValues, string>>>({});
 
   useEffect(() => {
@@ -88,10 +89,11 @@ export function TradeForm({ initial, onSubmit, submitting, fieldErrors }: TradeF
         setCommodities(commodityList);
         setCounterparties(counterpartyList);
       })
-      .catch(() => {
-        // Leaving the dropdowns empty on failure is enough here — the
-        // page hosting this form already has its own error banner for
-        // hard failures (e.g. the trade fetch itself).
+      .catch((err) => {
+        if (cancelled) return;
+        setReferenceDataError(
+          err instanceof Error ? err.message : "Failed to load commodity/counterparty options",
+        );
       });
 
     return () => {
@@ -124,6 +126,8 @@ export function TradeForm({ initial, onSubmit, submitting, fieldErrors }: TradeF
     <form onSubmit={handleSubmit} className="trade-form">
       <fieldset className="form-section">
         <legend>Commodity &amp; counterparty</legend>
+
+        {referenceDataError && <p className="field-note">{referenceDataError}</p>}
 
         <div className="field">
           <label htmlFor="commodityId">

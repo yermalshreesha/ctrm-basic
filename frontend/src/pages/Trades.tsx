@@ -8,6 +8,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { listCommodities, listCounterparties } from "../api/referenceData";
 import type { Commodity, Counterparty, Trade, TradeDirection, TradeStatus } from "../api/types";
+import { Banner } from "../components/Banner";
 import "./Trades.css";
 
 const STATUSES: TradeStatus[] = ["DRAFT", "CONFIRMED", "COMPLETED", "CANCELLED"];
@@ -23,6 +24,7 @@ export function Trades() {
   const [error, setError] = useState<string | null>(null);
   const [commodities, setCommodities] = useState<Commodity[]>([]);
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
+  const [referenceDataError, setReferenceDataError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,8 +34,11 @@ export function Trades() {
         setCommodities(commodityList);
         setCounterparties(counterpartyList);
       })
-      .catch(() => {
-        // Falling back to raw ids in the table is enough here.
+      .catch((err) => {
+        if (cancelled) return;
+        setReferenceDataError(
+          err instanceof Error ? err.message : "Failed to load commodity/counterparty options",
+        );
       });
     return () => {
       cancelled = true;
@@ -42,6 +47,10 @@ export function Trades() {
 
   useEffect(() => {
     let cancelled = false;
+    // Intentional: reset error/trades synchronously as soon as a filter
+    // changes, so the page immediately shows "Loading trades..." instead
+    // of stale rows from the previous filter while the new request is in
+    // flight — the oxlint set-state-in-effect warning is expected here.
     setError(null);
     setTrades(null);
 
@@ -111,6 +120,7 @@ export function Trades() {
               </option>
             ))}
           </select>
+          {referenceDataError && <span className="field-note">{referenceDataError}</span>}
         </div>
 
         <div className="filter">
@@ -130,11 +140,7 @@ export function Trades() {
         </Link>
       </div>
 
-      {error && (
-        <p role="alert" className="banner">
-          {error}
-        </p>
-      )}
+      {error && <Banner onDismiss={() => setError(null)}>{error}</Banner>}
       {!error && trades === null && <p>Loading trades...</p>}
       {!error && trades !== null && (
         <table className="data-table">

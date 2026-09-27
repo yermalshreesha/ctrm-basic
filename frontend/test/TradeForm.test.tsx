@@ -126,6 +126,18 @@ describe("TradeForm", () => {
     expect(screen.getByLabelText("Delivery period end")).toHaveValue("2026-02-20");
   });
 
+  it("shows an existing DRAFT trade's quantityMt and price unmodified in the edit form", () => {
+    mockReferenceData();
+    render(<TradeForm initial={baseTrade} onSubmit={vi.fn()} submitting={false} fieldErrors={[]} />);
+
+    // baseTrade.quantityMt is "300.100" and price is "1200.50" — values a
+    // Number()/parseFloat() round-trip would change (dropping trailing
+    // zeros), so this proves the edit form displays exactly what the API
+    // returned rather than reformatting it.
+    expect(screen.getByLabelText("Quantity (MT)")).toHaveValue("300.100");
+    expect(screen.getByLabelText("Price")).toHaveValue("1200.50");
+  });
+
   it("populates the commodity and counterparty dropdowns from the reference-data API responses", async () => {
     mockReferenceData(
       [{ id: "c1", name: "Arabica Coffee", category: "COFFEE", unit: "MT", createdAt: "", updatedAt: "" }],
