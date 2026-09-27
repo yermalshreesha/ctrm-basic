@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
+    "db:generate": "npm run db:generate -w backend",
     "db:migrate": "npm run db:migrate -w backend",
     "db:seed": "npm run db:seed -w backend",
     "db:test:migrate": "npm run db:test:migrate -w backend",
