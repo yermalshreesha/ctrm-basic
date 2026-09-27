@@ -217,3 +217,13 @@ code {
   align-items: center;
   gap: 8px;
 }
+
+/* Vertical spacing between independent sections stacked on one page
+   (e.g. Inventory's stock table and movements ledger). */
+.page-section {
+  margin-bottom: 32px;
+}
+
+.page-section:last-child {
+  margin-bottom: 0;
+}
