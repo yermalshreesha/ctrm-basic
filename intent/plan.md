@@ -728,6 +728,71 @@ on the Trades, Logistics and Inventory screens.
 
 ---
 
+## Phase 10 — Trade notes
+
+**Goal:** add an optional free-text `notes` field to Trade (up to 500
+characters, editable only while DRAFT, shown on the Trade detail page),
+per `intent/changes/001-trade-notes.md` and spec.md BR-11. A small
+single-field change, so backend and frontend are done together in one
+phase rather than split, unlike Phases 0–9's backend-first-then-UI
+build-out.
+
+**Decisions confirmed with the product owner for this phase
+(2026-10-01), recorded in spec.md:**
+- Field name is `notes` (not `note`).
+- The Trades list table does **not** gain a notes column — the field
+  is shown on the Trade detail page only, per the change request's
+  explicit scope.
+- A whitespace-only `notes` value is trimmed and normalized to `null`
+  on both create and `PATCH` — there is no stored distinction between
+  "no notes" and "cleared notes."
+
+**Files:**
+- `backend/prisma/schema.prisma` — add `notes String?` to the `Trade`
+  model, migration.
+- `backend/src/modules/trades/schema.ts` — add a `notesField` (trim,
+  max 500 characters, empty/whitespace-only transformed to `null`) to
+  both `createTradeSchema` and `patchTradeSchema`; a value over 500
+  characters is rejected 400 with a field-level error.
+- `backend/src/modules/trades/service.ts` — `serializeTrade` (or
+  equivalent) includes `notes`; the existing "PATCH only while DRAFT"
+  guard already covers it with no new code path, since `notes` is just
+  another field on the same patch schema.
+- `frontend/src/api/types.ts` — `Trade` type gains `notes: string |
+  null`.
+- `frontend/src/components/TradeForm.tsx` — a `<textarea>` field for
+  `notes` (optional, max 500 characters, grouped per ctrm-standards'
+  form conventions), shown while the trade is DRAFT/being created.
+- `frontend/src/pages/TradeDetail.tsx` — displays `notes` (when
+  non-null) read-only once the trade is no longer DRAFT; no change to
+  `frontend/src/pages/Trades.tsx` (list table stays as-is, per the
+  decision above).
+
+**Business rules implemented:** BR-11 (trade notes optional, bounded,
+DRAFT-only editable).
+
+**Tests:**
+- Create/PATCH a DRAFT trade with `notes` up to 500 characters
+  succeeds and round-trips exactly through create/get (AC-9).
+- Create/PATCH with `notes` over 500 characters is rejected 400 with a
+  field-level error; nothing persisted (AC-9).
+- A whitespace-only `notes` value on create or `PATCH` is normalized
+  and stored/returned as `null` (AC-10).
+- Omitting `notes` entirely on create stores and returns `null` (not
+  absent from the response body).
+- `PATCH` attempting to change `notes` once the trade is CONFIRMED,
+  COMPLETED or CANCELLED is rejected, same as any other field edit
+  outside DRAFT (AC-11) — extends the existing "PATCH only while
+  DRAFT" test rather than adding a new code path.
+
+**Manual check:**
+- Create a trade through the UI, type a note, save, and confirm it's
+  shown on the detail page; edit it again while still DRAFT; confirm
+  the trade and confirm the note is now read-only; confirm the Trades
+  list table shows no notes column.
+
+---
+
 ## Cross-cutting, applies to every phase
 
 - **Known tooling gap:** the backend and frontend workspaces are on
@@ -780,7 +845,8 @@ on the Trades, Logistics and Inventory screens.
 | BR-8 | A shipment's commodity is always read from its trade, never stored independently | 3b | "assert no `commodityId` column / value drift possible" — a structural/type-level assertion rather than an HTTP integration test | — |
 | BR-9 | Commodity/Counterparty/Warehouse are fixed seed data — no create/edit/delete API | 1 | Phase 1: `POST`/`PATCH`/`DELETE` rejected (404) on all three entities' endpoints; duplicate-name creates rejected by the DB unique constraint; seed script is idempotent. | — |
 | BR-10 | Trade cancellation blocked once it has any shipment, of any status (tightened 2026-09-25 — see Phase 3b decisions) | 2 (trivial case, no shipments yet), 3b (full) | Phase 2: cancel succeeds with no shipments. Phase 3b: "cancelling with a PLANNED/IN_TRANSIT/DELIVERED shipment rejected 409 listing all of them" (AC-4b); "cancelling with no shipments succeeds"; "deleting the blocking PLANNED shipment then cancelling succeeds" | — |
+| BR-11 | Trade notes are optional, max 500 characters, DRAFT-only editable, normalized to null when blank | 10 | Phase 10: notes up to 500 chars round-trip exactly (AC-9); over 500 chars rejected 400 (AC-9); whitespace-only normalized to null (AC-10); PATCH outside DRAFT rejected (AC-11) | — |
 
 **Test gaps: all closed.** BR-9's gap was closed in Phase 1; BR-1 is now
 closed across Phases 2, 3a and 3b; BR-5/BR-6 are now closed across
-Phases 2 and 3b (see rows above).
+Phases 2 and 3b; BR-11 is closed in Phase 10 (see rows above).

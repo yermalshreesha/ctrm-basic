@@ -139,6 +139,7 @@ section 10)
 | deliveryPeriodStart | date | |
 | deliveryPeriodEnd | date | ≥ deliveryPeriodStart |
 | status | enum | DRAFT, CONFIRMED, COMPLETED, CANCELLED |
+| notes | string, nullable | optional free text, max 500 characters; editable only while status is DRAFT, like every other Trade field; whitespace-only input is trimmed and stored as `null` (BR-11) |
 | createdAt / updatedAt | timestamp | |
 
 ### Shipment
@@ -320,6 +321,17 @@ clear message naming the current status and the attempted status
   movements or discarding completed logistics is out of scope.
   Shipments are never deleted automatically as a side effect of any
   other operation, including a rejected or attempted cancel.
+- **BR-11 (trade notes are optional, bounded, and DRAFT-only
+  editable).** `Trade.notes` is an optional free-text field, schema-
+  validated (standard 5) to at most 500 characters; a longer value is
+  rejected with a 400 and a field-level error, nothing persisted.
+  Whitespace-only input is trimmed and stored as `null`, same as
+  omitting the field — there is no behavioral difference between "no
+  notes" and "cleared notes." Like every other Trade field, `notes`
+  can only be set (on create) or changed (via `PATCH`) while the trade
+  is DRAFT; once CONFIRMED, COMPLETED or CANCELLED it is read-only.
+  No note history is kept, and shipments have no notes field of their
+  own (both out of scope — see section 10).
 
 ## 7. API endpoints
 
@@ -396,6 +408,10 @@ dropdown options, populated from `GET /api/counterparties` and `GET
   message naming them; a PLANNED one must be deleted (via the Shipment
   detail screen's Delete action) before the trade can be cancelled.
   Validation errors appear next to the relevant field (standard 6).
+  The optional `notes` field (free text, up to 500 characters) is
+  editable alongside the other DRAFT fields and shown read-only
+  afterward; it is not shown on the Trades list table (detail page
+  only, per product owner decision).
 - **Logistics (list)** — table of shipments across all trades: trade
   (linked), commodity, warehouse, transport mode, origin, destination,
   planned/actual dates, status; filters by status/warehouse.
@@ -472,6 +488,17 @@ stock"**
   shipment (BR-10); rejecting a negative/zero quantity or price at the
   API layer.
 
+**"Traders can add a free-text note to a trade"**
+- AC-9: Creating or editing a DRAFT trade with a `notes` value up to
+  500 characters succeeds and the value round-trips exactly through
+  create/get; a value over 500 characters is rejected with a 400 and
+  a field-level error, and nothing is persisted (BR-11).
+- AC-10: Submitting a whitespace-only `notes` value is normalized and
+  stored/returned as `null`, identical to omitting the field.
+- AC-11: Attempting to change `notes` via `PATCH` once the trade is no
+  longer DRAFT (CONFIRMED, COMPLETED or CANCELLED) is rejected, same
+  as any other Trade field edit outside DRAFT.
+
 ## 10. Out of scope / future intent
 
 - **Editable Counterparty and Warehouse lists.** Decision 3 (section
@@ -486,3 +513,7 @@ stock"**
   cancelling a trade once any shipment is IN_TRANSIT or DELIVERED.
   Supporting cancellation past that point would require reversing
   InventoryMovement entries and is deferred.
+- **Notes on shipments, and note history/audit trail.** Per the trade-
+  notes change request (`intent/changes/001-trade-notes.md`): Shipment
+  has no `notes` field, and `Trade.notes` keeps no edit history — only
+  the current value is stored, same as every other Trade field.
