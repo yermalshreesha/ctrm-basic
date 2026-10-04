@@ -20,6 +20,7 @@ function buildTrade(overrides: Partial<TradeWithShipments> = {}): TradeWithShipm
     deliveryPeriodStart: "2026-01-15",
     deliveryPeriodEnd: "2026-02-20",
     status: "DRAFT",
+    notes: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     shipments: [],
@@ -310,6 +311,23 @@ describe("TradeDetail", () => {
       expect(screen.queryByText(/Remaining to ship/)).not.toBeInTheDocument();
     },
   );
+
+  it("shows notes on a read-only (non-DRAFT) trade when present", async () => {
+    mockFetch(buildTrade({ status: "CONFIRMED", notes: "Buyer wants early delivery" }));
+    renderDetail("t1");
+    await waitForLoaded();
+
+    expect(screen.getByText("Notes")).toBeInTheDocument();
+    expect(screen.getByText("Buyer wants early delivery")).toBeInTheDocument();
+  });
+
+  it("shows no Notes row on a read-only trade when notes is null", async () => {
+    mockFetch(buildTrade({ status: "CONFIRMED", notes: null }));
+    renderDetail("t1");
+    await waitForLoaded();
+
+    expect(screen.queryByText("Notes")).not.toBeInTheDocument();
+  });
 
   it("displays quantityMt and price exactly as the API returns them", async () => {
     mockFetch(buildTrade({ status: "CONFIRMED", quantityMt: "1200.500", price: "45.75" }));

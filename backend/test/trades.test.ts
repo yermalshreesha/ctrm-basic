@@ -407,6 +407,130 @@ describe("trades", () => {
     });
   });
 
+  describe("notes (BR-11)", () => {
+    it("creates a trade with a notes value up to 500 characters and round-trips it exactly", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const notes = "a".repeat(500);
+
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id, notes }));
+
+      expect(created.status).toBe(201);
+      expect(created.body.notes).toBe(notes);
+
+      const fetched = await request(app).get(`/api/trades/${created.body.id}`);
+      expect(fetched.body.notes).toBe(notes);
+    });
+
+    it("rejects a notes value over 500 characters with a field-level error, persisting nothing", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+
+      const res = await request(app)
+        .post("/api/trades")
+        .send(
+          validTradeBody({
+            commodityId: commodity.id,
+            counterpartyId: counterparty.id,
+            notes: "a".repeat(501),
+          }),
+        );
+
+      expect(res.status).toBe(400);
+      expect(res.body.fields).toEqual(expect.arrayContaining([expect.objectContaining({ field: "notes" })]));
+      await expect(prisma.trade.count()).resolves.toBe(0);
+    });
+
+    it("creates a trade with no notes field and returns notes as null", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+
+      expect(created.status).toBe(201);
+      expect(created.body.notes).toBeNull();
+    });
+
+    it("normalizes a whitespace-only notes value to null on create", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id, notes: "   " }));
+
+      expect(created.status).toBe(201);
+      expect(created.body.notes).toBeNull();
+    });
+
+    it("updates notes on a DRAFT trade via PATCH", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+
+      const res = await request(app)
+        .patch(`/api/trades/${created.body.id}`)
+        .send({ notes: "Buyer requested early delivery" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.notes).toBe("Buyer requested early delivery");
+    });
+
+    it("normalizes a whitespace-only notes value to null on PATCH, clearing a previous note", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id, notes: "Original note" }));
+
+      const res = await request(app)
+        .patch(`/api/trades/${created.body.id}`)
+        .send({ notes: "   " });
+
+      expect(res.status).toBe(200);
+      expect(res.body.notes).toBeNull();
+    });
+
+    it("rejects a PATCH with a notes value over 500 characters, leaving the stored value unchanged", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id, notes: "Original note" }));
+
+      const res = await request(app)
+        .patch(`/api/trades/${created.body.id}`)
+        .send({ notes: "a".repeat(501) });
+
+      expect(res.status).toBe(400);
+      expect(res.body.fields).toEqual(expect.arrayContaining([expect.objectContaining({ field: "notes" })]));
+
+      const fetched = await request(app).get(`/api/trades/${created.body.id}`);
+      expect(fetched.body.notes).toBe("Original note");
+    });
+
+    it("rejects changing notes once the trade is CONFIRMED, same as any other field edit outside DRAFT", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+
+      const res = await request(app)
+        .patch(`/api/trades/${created.body.id}`)
+        .send({ notes: "Too late" });
+
+      expect(res.status).toBe(409);
+    });
+  });
+
   describe("read (GET /api/trades, GET /api/trades/:id)", () => {
     it("GET /api/trades/:id returns the matching trade", async () => {
       const commodity = await createCommodity();

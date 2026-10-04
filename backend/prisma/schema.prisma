@@ -92,6 +92,10 @@ model Trade {
   deliveryPeriodStart DateTime       @db.Date
   deliveryPeriodEnd   DateTime       @db.Date
   status              TradeStatus    @default(DRAFT)
+  // Optional, max 500 characters (schema-validated, BR-11) — editable only
+  // while DRAFT, like every other Trade field. Whitespace-only input is
+  // trimmed and stored as null; no edit history is kept.
+  notes               String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   shipments           Shipment[]

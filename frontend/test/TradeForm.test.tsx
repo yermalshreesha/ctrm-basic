@@ -28,6 +28,7 @@ const baseTrade: Trade = {
   deliveryPeriodStart: "2026-01-15",
   deliveryPeriodEnd: "2026-02-20",
   status: "DRAFT",
+  notes: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -136,6 +137,41 @@ describe("TradeForm", () => {
     // returned rather than reformatting it.
     expect(screen.getByLabelText("Quantity (MT)")).toHaveValue("300.100");
     expect(screen.getByLabelText("Price")).toHaveValue("1200.50");
+  });
+
+  it("sends a typed notes value verbatim, and omits it from required-field validation", () => {
+    mockReferenceData();
+    const onSubmit = vi.fn();
+    render(<TradeForm initial={baseTrade} onSubmit={onSubmit} submitting={false} fieldErrors={[]} />);
+
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "Buyer wants early delivery" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ notes: "Buyer wants early delivery" }));
+  });
+
+  it("shows an existing trade's notes in the textarea, and a blank textarea when notes is null", () => {
+    mockReferenceData();
+    render(
+      <TradeForm initial={{ ...baseTrade, notes: "Existing note" }} onSubmit={vi.fn()} submitting={false} fieldErrors={[]} />,
+    );
+    expect(screen.getByLabelText("Notes")).toHaveValue("Existing note");
+  });
+
+  it("renders a 400 field error next to the notes field", () => {
+    mockReferenceData();
+    render(
+      <TradeForm
+        initial={baseTrade}
+        onSubmit={vi.fn()}
+        submitting={false}
+        fieldErrors={[{ field: "notes", message: "notes must be at most 500 characters" }]}
+      />,
+    );
+
+    expect(screen.getByLabelText("Notes").closest("div")).toHaveTextContent(
+      "notes must be at most 500 characters",
+    );
   });
 
   it("populates the commodity and counterparty dropdowns from the reference-data API responses", async () => {
