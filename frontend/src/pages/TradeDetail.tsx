@@ -230,6 +230,12 @@ export function TradeDetail() {
             <dt>Status</dt>
             <dd>{trade.status}</dd>
           </div>
+          {trade.notes && (
+            <div>
+              <dt>Notes</dt>
+              <dd>{trade.notes}</dd>
+            </div>
+          )}
         </dl>
       )}
 

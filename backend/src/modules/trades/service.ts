@@ -82,6 +82,7 @@ export interface CreateTradeInput {
   currency: "USD" | "EUR" | "GBP";
   deliveryPeriodStart: Date;
   deliveryPeriodEnd: Date;
+  notes?: string | null;
 }
 
 export type PatchTradeInput = Partial<CreateTradeInput>;
@@ -153,6 +154,7 @@ export async function createTrade(input: CreateTradeInput) {
       currency: input.currency,
       deliveryPeriodStart: input.deliveryPeriodStart,
       deliveryPeriodEnd: input.deliveryPeriodEnd,
+      notes: input.notes,
       status: "DRAFT",
     },
   });
@@ -185,6 +187,7 @@ export async function patchTrade(id: string, input: PatchTradeInput): Promise<Re
       currency: input.currency,
       deliveryPeriodStart: input.deliveryPeriodStart,
       deliveryPeriodEnd: input.deliveryPeriodEnd,
+      notes: input.notes,
     },
   });
   return { ok: true, data: updated };
