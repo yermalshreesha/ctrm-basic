@@ -784,3 +784,79 @@ on the Trades, Logistics and Inventory screens.
 **Test gaps: all closed.** BR-9's gap was closed in Phase 1; BR-1 is now
 closed across Phases 2, 3a and 3b; BR-5/BR-6 are now closed across
 Phases 2 and 3b (see rows above).
+
+---
+
+## Phase 10 — Change 002: Rename the "Corn" commodity to "Maize"
+
+**Goal:** make "Maize" available in the Commodity dropdown on the Trade
+form, per the Decision recorded in `intent/change-002-add-maize.md` — a
+**rename** of the existing "Corn" row in place, not an addition, so any
+trade already referencing it by `commodityId` keeps pointing at the same
+row and simply displays "Maize" afterwards. The row is never deleted.
+
+**Decision** (`intent/change-002-add-maize.md`'s "Decision" and "Affects
+existing" sections, also recorded in spec.md §2.5): "Maize" and the
+already-seeded "Corn" (`backend/prisma/seed.ts`) are the same crop under
+two different regional names. No new category or unit — GRAIN/MT
+already apply.
+
+**Files:**
+- `backend/prisma/migrations/20261006120000_rename_corn_to_maize/
+  migration.sql` — new hand-written migration (same pattern as
+  `20260924150000_add_trade_check_constraints`): `UPDATE "Commodity" SET
+  name = 'Maize', "updatedAt" = now() WHERE name = 'Corn'`. `updatedAt`
+  is bumped since the row's data genuinely changed (ctrm-standards #2).
+  Idempotent — a database with no "Corn" row (already renamed, or never
+  had one) is left untouched by a second apply. Preserves the row's
+  `id`, so every existing `Trade.commodityId` FK stays valid and now
+  resolves to "Maize".
+- `backend/prisma/seed.ts` — change the `seedCommodities` entry
+  `{ name: "Corn", category: "GRAIN", unit: "MT" }` to
+  `{ name: "Maize", category: "GRAIN", unit: "MT" }`, so a brand-new
+  database (no prior "Corn" row to rename) seeds "Maize" directly.
+- `intent/spec.md` — §2 decision 5 and §4's Commodity example list,
+  both already updated as part of this change.
+
+**Business rules implemented:** none new; BR-9 (fixed reference data,
+no create/edit/delete API) continues to apply unchanged — this is a
+rename, not a schema or API change.
+
+**Tests:**
+- New (`backend/test/commodityRename.test.ts`): reads the migration's
+  actual `migration.sql` file off disk at test time (`readFileSync`) and
+  executes its exact contents via `prisma.$executeRawUnsafe` — never a
+  hardcoded copy of the SQL — so the test and the migration can never
+  drift apart. A Commodity row is created directly with `name: "Corn"`;
+  a Trade is created referencing it by `commodityId`; the migration file
+  is applied; then:
+  - the Commodity row is refetched by its original `id` and has
+    `name: "Maize"` — same `id`, proving it was renamed in place, not
+    replaced — and a later `updatedAt` than before the rename.
+  - the Trade is refetched (via Prisma and via `GET /api/trades/:id`)
+    and its joined commodity now shows "Maize" — proving a trade that
+    used "Corn" shows "Maize" afterwards, with the same underlying
+    commodity.
+  - running the same migration file a second time is a no-op: still
+    exactly one Commodity row, still `name: "Maize"`, same `id`, and no
+    row named "Corn" remains (idempotency).
+  - applying the migration file against a database that already seeded
+    "Maize" directly (no prior "Corn" row) leaves that row's `name`,
+    `id` and `updatedAt` all untouched.
+- `backend/test/seed.test.ts` and `backend/test/commodities.test.ts`
+  need no changes: the former derives its expected count/contents from
+  `seedCommodities` itself, the latter creates its own ad hoc rows
+  (Wheat, Arabica Coffee, Sugar ICUMSA 45) rather than depending on the
+  full seed list. A repo-wide search confirms nothing else hardcodes
+  "Corn".
+
+**Manual check:**
+- Run `npm run db:migrate` against the dev database (which already has
+  a "Corn" row from earlier seeding): confirm via `psql`/Prisma Studio
+  that the same row now reads "Maize" with its `id` unchanged, and that
+  any trade created earlier against "Corn" still shows the correct
+  commodity, now labeled "Maize" — no manual cleanup step.
+- Open the Trade form in the browser and confirm "Maize" appears in the
+  commodity dropdown, with "Corn" gone, and that an existing trade's
+  detail page (if one was created against "Corn" before this change)
+  now shows "Maize".
