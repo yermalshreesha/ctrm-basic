@@ -7,4 +7,17 @@
 -- Idempotent: a database with no row named "Corn" (already renamed by an
 -- earlier apply of this migration, or a fresh database that seeded
 -- "Maize" directly via prisma/seed.ts) is left untouched by this UPDATE.
-UPDATE "Commodity" SET name = 'Maize', "updatedAt" = now() WHERE name = 'Corn';
+--
+-- Guarded: "name" is unique, so if both "Corn" and "Maize" rows already
+-- exist (e.g. someone re-ran the seed or added "Maize" by hand before
+-- this migration ran), renaming "Corn" would collide. Rather than guess
+-- which row to keep, stop with a clear error so a human resolves it.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM "Commodity" WHERE name = 'Corn')
+     AND EXISTS (SELECT 1 FROM "Commodity" WHERE name = 'Maize') THEN
+    RAISE EXCEPTION 'Cannot rename Corn to Maize: both rows already exist. Resolve manually (merge or delete one) before re-running this migration.';
+  END IF;
+
+  UPDATE "Commodity" SET name = 'Maize', "updatedAt" = now() WHERE name = 'Corn';
+END $$;

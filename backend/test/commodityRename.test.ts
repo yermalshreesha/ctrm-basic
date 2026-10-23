@@ -98,4 +98,22 @@ describe("rename: Corn -> Maize (Change 002)", () => {
     expect(unchanged?.id).toBe(maize.id);
     expect(unchanged?.updatedAt.getTime()).toBe(maize.updatedAt.getTime());
   });
+
+  it("stops with a clear error instead of guessing if both Corn and Maize already exist", async () => {
+    const corn = await prisma.commodity.create({
+      data: { name: "Corn", category: "GRAIN", unit: "MT" },
+    });
+    const maize = await prisma.commodity.create({
+      data: { name: "Maize", category: "GRAIN", unit: "MT" },
+    });
+
+    await expect(prisma.$executeRawUnsafe(RENAME_MIGRATION_SQL)).rejects.toThrow(
+      /both rows already exist/i,
+    );
+
+    const unchangedCorn = await prisma.commodity.findUnique({ where: { id: corn.id } });
+    const unchangedMaize = await prisma.commodity.findUnique({ where: { id: maize.id } });
+    expect(unchangedCorn?.name).toBe("Corn");
+    expect(unchangedMaize?.name).toBe("Maize");
+  });
 });
