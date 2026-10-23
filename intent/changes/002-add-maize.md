@@ -3,7 +3,7 @@ Traders want Maize in the commodity list.
 
 ## Decision
 Corn and Maize are the same crop, so Corn is renamed to Maize
-instead of adding a second row. Confirmed by [your name] on [date].
+instead of adding a second row. Confirmed by Yermal Udaya Shreesha on 2026-10-06.
 
 ## Affects existing
 The existing Corn commodity is renamed to Maize. Trades that used

@@ -1,5 +1,5 @@
 # Change: Notes on trades
-Requested by: [client name], [date]
+Requested by: Yermal Udaya Shreesha (acting as client), 2026-10-01
 
 ## What they asked for
 Traders want to add a free-text note to a trade.
