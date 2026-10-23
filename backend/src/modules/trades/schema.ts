@@ -21,6 +21,20 @@ const dateField = z
   .date("must be a valid date (YYYY-MM-DD)")
   .transform((value) => new Date(value));
 
+// Optional, max 500 characters (BR-11). Whitespace-only input is trimmed
+// and normalized to null — same as "no notes" — rather than stored as an
+// empty/blank string.
+const notesField = z
+  .string()
+  .max(500, { message: "notes must be at most 500 characters" })
+  .nullable()
+  .optional()
+  .transform((value) => {
+    if (value === null || value === undefined) return value;
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  });
+
 // maxIntegerDigits = precision - scale of the DB column: DECIMAL(12,3) and
 // DECIMAL(12,2) respectively.
 const quantityMtField = decimalField("quantityMt", { maxDecimals: 3, maxIntegerDigits: 9 });
@@ -55,6 +69,7 @@ export const createTradeSchema = withDeliveryPeriodCheck(
     currency: z.enum(["USD", "EUR", "GBP"]),
     deliveryPeriodStart: dateField,
     deliveryPeriodEnd: dateField,
+    notes: notesField,
   }),
 );
 
@@ -67,6 +82,7 @@ export const patchTradeSchema = z.object({
   currency: z.enum(["USD", "EUR", "GBP"]).optional(),
   deliveryPeriodStart: dateField.optional(),
   deliveryPeriodEnd: dateField.optional(),
+  notes: notesField,
 });
 
 export const listTradesQuerySchema = z.object({

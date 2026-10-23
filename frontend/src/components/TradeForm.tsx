@@ -24,6 +24,8 @@ export interface TradeFormValues {
   currency: Currency;
   deliveryPeriodStart: string;
   deliveryPeriodEnd: string;
+  // Optional; an empty string is normalized to null by the backend.
+  notes: string;
 }
 
 export interface TradeFormProps {
@@ -57,6 +59,7 @@ function emptyValues(): TradeFormValues {
     currency: "USD",
     deliveryPeriodStart: "",
     deliveryPeriodEnd: "",
+    notes: "",
   };
 }
 
@@ -70,6 +73,7 @@ function valuesFromTrade(trade: Trade): TradeFormValues {
     currency: trade.currency,
     deliveryPeriodStart: trade.deliveryPeriodStart,
     deliveryPeriodEnd: trade.deliveryPeriodEnd,
+    notes: trade.notes ?? "",
   };
 }
 
@@ -275,6 +279,26 @@ export function TradeForm({ initial, onSubmit, submitting, fieldErrors }: TradeF
           {fieldMessage("deliveryPeriodEnd") && (
             <span role="alert" className="field-error">
               {fieldMessage("deliveryPeriodEnd")}
+            </span>
+          )}
+        </div>
+      </fieldset>
+
+      <fieldset className="form-section">
+        <legend>Notes</legend>
+
+        <div className="field">
+          <label htmlFor="notes">Notes</label>
+          <textarea
+            id="notes"
+            rows={4}
+            maxLength={500}
+            value={values.notes}
+            onChange={(e) => set("notes", e.target.value)}
+          />
+          {fieldMessage("notes") && (
+            <span role="alert" className="field-error">
+              {fieldMessage("notes")}
             </span>
           )}
         </div>

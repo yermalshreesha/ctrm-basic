@@ -50,6 +50,9 @@ export interface Trade {
   deliveryPeriodStart: string;
   deliveryPeriodEnd: string;
   status: TradeStatus;
+  // Optional free text, up to 500 characters (BR-11); null when not set.
+  // Editable only while status is DRAFT, like every other Trade field.
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 }

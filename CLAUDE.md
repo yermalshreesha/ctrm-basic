@@ -69,6 +69,10 @@ Run the tests, lint, AND typecheck (`npm test`, `npm run lint`,
 `npm run typecheck`) before reporting a task complete, and show the
 output. If a test fails, fix the code, not the test.
 
+## Reviews
+- Reviews follow REVIEW.md at the project root.
+- A reviewer never modifies files; it only reports findings.
+
 ## Continuous integration
 `.github/workflows/ci.yml` runs on every pull request to `main` and
 every push to `main`: it spins up a Postgres 16 service container
