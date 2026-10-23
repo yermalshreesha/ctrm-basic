@@ -856,12 +856,12 @@ Phases 2 and 3b; BR-11 is closed in Phase 10 (see rows above).
 ## Phase 11 — Change 002: Rename the "Corn" commodity to "Maize"
 
 **Goal:** make "Maize" available in the Commodity dropdown on the Trade
-form, per the Decision recorded in `intent/change-002-add-maize.md` — a
+form, per the Decision recorded in `intent/changes/002-add-maize.md` — a
 **rename** of the existing "Corn" row in place, not an addition, so any
 trade already referencing it by `commodityId` keeps pointing at the same
 row and simply displays "Maize" afterwards. The row is never deleted.
 
-**Decision** (`intent/change-002-add-maize.md`'s "Decision" and "Affects
+**Decision** (`intent/changes/002-add-maize.md`'s "Decision" and "Affects
 existing" sections, also recorded in spec.md §2.5): "Maize" and the
 already-seeded "Corn" (`backend/prisma/seed.ts`) are the same crop under
 two different regional names. No new category or unit — GRAIN/MT

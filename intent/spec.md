@@ -52,7 +52,7 @@ none are implied by the intent and none are added.
    what a real CTRM would run.
 
 5. **"Maize" vs. the seeded "Corn" commodity — decision recorded in
-   `intent/change-002-add-maize.md`'s "Decision" section: a rename, not
+   `intent/changes/002-add-maize.md`'s "Decision" section: a rename, not
    an addition.** Maize and corn are the same crop (Zea mays) —
    "maize" is the international/UK term, "corn" the US term used in
    the original seed data. Rather than add a second GRAIN commodity
@@ -62,7 +62,7 @@ none are implied by the intent and none are added.
    place** — same `id`, never deleted and recreated — so any Trade
    already referencing that commodity by `commodityId` keeps pointing
    at it and simply displays "Maize" from then on, per
-   `intent/change-002-add-maize.md`'s "Affects existing" section. No
+   `intent/changes/002-add-maize.md`'s "Affects existing" section. No
    new category or unit is introduced — GRAIN/MT already cover it.
    This is done two ways together, both idempotent (safe to run more
    than once, and safe against a database that never had a "Corn" row
