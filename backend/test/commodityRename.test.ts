@@ -7,7 +7,7 @@ import request from "supertest";
 import { app } from "../src/app.js";
 import { prisma } from "../src/db.js";
 
-// Change 002 (intent/change-002-add-maize.md): "Corn" is renamed to
+// Change 002 (intent/changes/002-add-maize.md): "Corn" is renamed to
 // "Maize" in place — same row, same id — via the
 // 20261006120000_rename_corn_to_maize migration. These tests read and
 // execute that migration's actual SQL file, rather than a hardcoded

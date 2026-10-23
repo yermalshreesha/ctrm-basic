@@ -63,6 +63,8 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
   uses port 5433.
 - The kr-prolines frontend often uses port 5173, so this project's
   frontend may run on 5174. Don't hard-code the frontend port.
+- This project uses npm only (package-lock.json). Never run pnpm
+  here, even though kr-prolines uses it.
 
 ## Verifying your work
 Run the tests, lint, AND typecheck (`npm test`, `npm run lint`,
