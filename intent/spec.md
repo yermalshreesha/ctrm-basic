@@ -80,6 +80,19 @@ none are implied by the intent and none are added.
      first time (no migration history to "rename" from) gets "Maize"
      directly.
 
+6. **Backend port is configurable, not fixed at 3001** — decision
+   recorded in `intent/changes/003-backend-port.md`: another project on
+   the same laptop (kr-prolines) also defaults its backend to port
+   3001, so running both at once sends CTRM's frontend to the wrong
+   backend unless `vite.config.ts` is hand-edited every time. The
+   backend's HTTP port is read from `.env`'s `PORT` variable, default
+   changed to `3002`; the frontend's Vite dev server proxy reads the
+   same `.env` value for its `/api` target, from the one root `.env`
+   file — never a second, frontend-local copy — so the two settings
+   can never drift apart and nobody edits `vite.config.ts` by hand to
+   work around a clash. Production/deployment port configuration is out
+   of scope here (see change 004, deployment).
+
 ## 3. Areas of concern
 
 - **Inventory never-negative is a concurrency-sensitive rule.** With a

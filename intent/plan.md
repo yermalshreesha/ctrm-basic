@@ -926,3 +926,55 @@ rename, not a schema or API change.
   commodity dropdown, with "Corn" gone, and that an existing trade's
   detail page (if one was created against "Corn" before this change)
   now shows "Maize".
+
+---
+
+## Phase 12 — Change 003: Configurable backend port
+
+**Goal:** stop hard-coding the backend's port in two separate places —
+`backend/src/server.ts`'s fallback and `frontend/vite.config.ts`'s
+proxy target — so CTRM can run alongside kr-prolines on the same
+laptop (both currently default to port 3001) without hand-editing
+`vite.config.ts` every time, per
+`intent/changes/003-backend-port.md`.
+
+**Decision** (`intent/changes/003-backend-port.md`, also recorded in
+spec.md §2.6): the backend's port comes from `.env`'s `PORT`, default
+changed from `3001` to `3002`. The frontend's dev proxy reads the same
+`.env` value, from the single root `.env` file — never a second,
+frontend-local copy — so the two settings can't drift apart.
+
+**Open design questions (recommended defaults below) — confirm with
+the product owner before implementing:**
+- How should `vite.config.ts` read the root `.env`'s `PORT`?
+  Recommended: Vite's own `loadEnv(mode, <repo root>, '')` inside the
+  function form of `defineConfig`, pointed at the same root `.env` file
+  `backend/src/db.ts` already loads via `dotenv` — no new frontend
+  dependency, and no second env file to keep in sync.
+- What should each side fall back to if `.env`/`PORT` is missing
+  entirely? Recommended: the same literal, `3002`, in both
+  `backend/src/server.ts` and `frontend/vite.config.ts`, so `npm run
+  dev` still works out of the box with no `.env` present.
+
+**Files:**
+- `.env.example` — `PORT=3001` → `PORT=3002`
+- `backend/src/server.ts` — fallback literal `3001` → `3002`
+- `frontend/vite.config.ts` — proxy target stops being the hard-coded
+  string `'http://localhost:3001'`; reads `PORT` from the root `.env`
+  (mechanism per the open question above), falling back to `3002`
+- `CLAUDE.md` — the Commands section's "Express on port 3001" line
+  updated to describe the `.env`-driven port (default `3002`) instead
+  of a fixed number
+
+**Business rules implemented:** none — dev tooling only, no change to
+spec §6/§7/§8.
+
+**Tests:** none planned — not business logic, and CI doesn't bind a
+real port (the change's "Affects existing" note); verified manually.
+
+**Manual check:** with no other project running, `npm run dev`,
+confirm the backend logs "listening on port 3002" and the frontend
+reaches `/api/health` through the proxy with no console errors; then
+change `.env`'s `PORT` to a third value (e.g. `3099`), restart `npm run
+dev`, and confirm both sides pick it up with zero edits to
+`vite.config.ts`.
