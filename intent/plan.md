@@ -843,10 +843,86 @@ DRAFT-only editable).
 | BR-6 | Date ordering: `deliveryPeriodEnd ≥ deliveryPeriodStart` (Trade), `plannedArrivalDate ≥ plannedDepartureDate` (Shipment), `actualArrivalDate ≥ actualDepartureDate` (Shipment) | 2 (Trade), 3b (Shipment) | Phase 2: "rejects end date before start date" on Trade. Phase 3b: "rejects plannedArrivalDate before plannedDepartureDate" on Shipment create/PATCH; "rejects actualArrivalDate before actualDepartureDate" on deliver; "rejects a future actualDepartureDate/actualArrivalDate" (product owner decision). | — |
 | BR-7 | Only whitelisted status transitions permitted, others rejected with a clear error | 2 (Trade), 3b (Shipment) | Phase 2: invalid transitions rejected via confirm/cancel (double-confirm, confirm-after-cancel, double-cancel); `DRAFT→COMPLETED` and other `COMPLETED` cases wait for Phase 3b's `/complete` endpoint. Phase 3b: "invalid shipment transitions rejected (PLANNED→DELIVERED, DELIVERED→*, trade not CONFIRMED)", plus the deferred `DRAFT→COMPLETED` Trade case | — |
 | BR-8 | A shipment's commodity is always read from its trade, never stored independently | 3b | "assert no `commodityId` column / value drift possible" — a structural/type-level assertion rather than an HTTP integration test | — |
-| BR-9 | Commodity/Counterparty/Warehouse are fixed seed data — no create/edit/delete API | 1 | Phase 1: `POST`/`PATCH`/`DELETE` rejected (404) on all three entities' endpoints; duplicate-name creates rejected by the DB unique constraint; seed script is idempotent. | — |
+| BR-9 | Commodity/Counterparty/Warehouse are fixed seed data — no create/edit/delete API | 1, 11 (Maize rename) | Phase 1: `POST`/`PATCH`/`DELETE` rejected (404) on all three entities' endpoints; duplicate-name creates rejected by the DB unique constraint; seed script is idempotent. Phase 11: `commodityRename.test.ts` confirms the "Corn"→"Maize" rename happens only via a hand-written migration against the existing row (same `id`), never through a create/edit/delete endpoint — BR-9 unaffected. | — |
 | BR-10 | Trade cancellation blocked once it has any shipment, of any status (tightened 2026-09-25 — see Phase 3b decisions) | 2 (trivial case, no shipments yet), 3b (full) | Phase 2: cancel succeeds with no shipments. Phase 3b: "cancelling with a PLANNED/IN_TRANSIT/DELIVERED shipment rejected 409 listing all of them" (AC-4b); "cancelling with no shipments succeeds"; "deleting the blocking PLANNED shipment then cancelling succeeds" | — |
 | BR-11 | Trade notes are optional, max 500 characters, DRAFT-only editable, normalized to null when blank | 10 | Phase 10: notes up to 500 chars round-trip exactly (AC-9); over 500 chars rejected 400 (AC-9); whitespace-only normalized to null (AC-10); PATCH outside DRAFT rejected (AC-11) | — |
 
 **Test gaps: all closed.** BR-9's gap was closed in Phase 1; BR-1 is now
 closed across Phases 2, 3a and 3b; BR-5/BR-6 are now closed across
 Phases 2 and 3b; BR-11 is closed in Phase 10 (see rows above).
+
+---
+
+## Phase 11 — Change 002: Rename the "Corn" commodity to "Maize"
+
+**Goal:** make "Maize" available in the Commodity dropdown on the Trade
+form, per the Decision recorded in `intent/changes/002-add-maize.md` — a
+**rename** of the existing "Corn" row in place, not an addition, so any
+trade already referencing it by `commodityId` keeps pointing at the same
+row and simply displays "Maize" afterwards. The row is never deleted.
+
+**Decision** (`intent/changes/002-add-maize.md`'s "Decision" and "Affects
+existing" sections, also recorded in spec.md §2.5): "Maize" and the
+already-seeded "Corn" (`backend/prisma/seed.ts`) are the same crop under
+two different regional names. No new category or unit — GRAIN/MT
+already apply.
+
+**Files:**
+- `backend/prisma/migrations/20261006120000_rename_corn_to_maize/
+  migration.sql` — new hand-written migration (same pattern as
+  `20260924150000_add_trade_check_constraints`): `UPDATE "Commodity" SET
+  name = 'Maize', "updatedAt" = now() WHERE name = 'Corn'`. `updatedAt`
+  is bumped since the row's data genuinely changed (ctrm-standards #2).
+  Idempotent — a database with no "Corn" row (already renamed, or never
+  had one) is left untouched by a second apply. Preserves the row's
+  `id`, so every existing `Trade.commodityId` FK stays valid and now
+  resolves to "Maize".
+- `backend/prisma/seed.ts` — change the `seedCommodities` entry
+  `{ name: "Corn", category: "GRAIN", unit: "MT" }` to
+  `{ name: "Maize", category: "GRAIN", unit: "MT" }`, so a brand-new
+  database (no prior "Corn" row to rename) seeds "Maize" directly.
+- `intent/spec.md` — §2 decision 5 and §4's Commodity example list,
+  both already updated as part of this change.
+
+**Business rules implemented:** none new; BR-9 (fixed reference data,
+no create/edit/delete API) continues to apply unchanged — this is a
+rename, not a schema or API change.
+
+**Tests:**
+- New (`backend/test/commodityRename.test.ts`): reads the migration's
+  actual `migration.sql` file off disk at test time (`readFileSync`) and
+  executes its exact contents via `prisma.$executeRawUnsafe` — never a
+  hardcoded copy of the SQL — so the test and the migration can never
+  drift apart. A Commodity row is created directly with `name: "Corn"`;
+  a Trade is created referencing it by `commodityId`; the migration file
+  is applied; then:
+  - the Commodity row is refetched by its original `id` and has
+    `name: "Maize"` — same `id`, proving it was renamed in place, not
+    replaced — and a later `updatedAt` than before the rename.
+  - the Trade is refetched (via Prisma and via `GET /api/trades/:id`)
+    and its joined commodity now shows "Maize" — proving a trade that
+    used "Corn" shows "Maize" afterwards, with the same underlying
+    commodity.
+  - running the same migration file a second time is a no-op: still
+    exactly one Commodity row, still `name: "Maize"`, same `id`, and no
+    row named "Corn" remains (idempotency).
+  - applying the migration file against a database that already seeded
+    "Maize" directly (no prior "Corn" row) leaves that row's `name`,
+    `id` and `updatedAt` all untouched.
+- `backend/test/seed.test.ts` and `backend/test/commodities.test.ts`
+  need no changes: the former derives its expected count/contents from
+  `seedCommodities` itself, the latter creates its own ad hoc rows
+  (Wheat, Arabica Coffee, Sugar ICUMSA 45) rather than depending on the
+  full seed list. A repo-wide search confirms nothing else hardcodes
+  "Corn".
+
+**Manual check:**
+- Run `npm run db:migrate` against the dev database (which already has
+  a "Corn" row from earlier seeding): confirm via `psql`/Prisma Studio
+  that the same row now reads "Maize" with its `id` unchanged, and that
+  any trade created earlier against "Corn" still shows the correct
+  commodity, now labeled "Maize" — no manual cleanup step.
+- Open the Trade form in the browser and confirm "Maize" appears in the
+  commodity dropdown, with "Corn" gone, and that an existing trade's
+  detail page (if one was created against "Corn" before this change)
+  now shows "Maize".

@@ -15,3 +15,5 @@ You are reviewing, not writing. Never create, edit or delete files.
 5. Report findings as Important or Nit, each with the file, the
    problem and why it matters, following the limits in REVIEW.md.
    End with what you verified as correct.
+6. Never start or stop servers, containers or databases. If the
+   database is not running, report that instead of starting it.

@@ -3,7 +3,7 @@ import { prisma } from "../src/db.js";
 
 export const seedCommodities = [
   { name: "Wheat", category: "GRAIN", unit: "MT" },
-  { name: "Corn", category: "GRAIN", unit: "MT" },
+  { name: "Maize", category: "GRAIN", unit: "MT" },
   { name: "Arabica Coffee", category: "COFFEE", unit: "MT" },
   { name: "Robusta Coffee", category: "COFFEE", unit: "MT" },
   { name: "Sugar ICUMSA 45", category: "SUGAR", unit: "MT" },

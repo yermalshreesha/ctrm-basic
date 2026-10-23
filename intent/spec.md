@@ -51,6 +51,35 @@ none are implied by the intent and none are added.
    this single-user local app; PostgreSQL is kept since it's closer to
    what a real CTRM would run.
 
+5. **"Maize" vs. the seeded "Corn" commodity — decision recorded in
+   `intent/changes/002-add-maize.md`'s "Decision" section: a rename, not
+   an addition.** Maize and corn are the same crop (Zea mays) —
+   "maize" is the international/UK term, "corn" the US term used in
+   the original seed data. Rather than add a second GRAIN commodity
+   for the same crop (which would split net-position and inventory
+   figures across two rows for what a trader considers one
+   commodity), the existing "Corn" row is renamed to "Maize" **in
+   place** — same `id`, never deleted and recreated — so any Trade
+   already referencing that commodity by `commodityId` keeps pointing
+   at it and simply displays "Maize" from then on, per
+   `intent/changes/002-add-maize.md`'s "Affects existing" section. No
+   new category or unit is introduced — GRAIN/MT already cover it.
+   This is done two ways together, both idempotent (safe to run more
+   than once, and safe against a database that never had a "Corn" row
+   at all):
+   - A hand-written Prisma migration (same pattern as
+     `20260924150000_add_trade_check_constraints`) runs
+     `UPDATE "Commodity" SET name = 'Maize', "updatedAt" = now() WHERE
+     name = 'Corn'` against whatever database it's applied to (dev, or
+     any future deployed environment) — a one-time, in-place rename via
+     `prisma migrate deploy`/`db:migrate`/`db:test:migrate`, not a
+     manual cleanup step. `updatedAt` is bumped since the row's data
+     genuinely changed (ctrm-standards #2).
+   - `backend/prisma/seed.ts`'s `seedCommodities` entry is updated from
+     `"Corn"` to `"Maize"`, so a fresh database that seeds for the
+     first time (no migration history to "rename" from) gets "Maize"
+     directly.
+
 ## 3. Areas of concern
 
 - **Inventory never-negative is a concurrency-sensitive rule.** With a
@@ -106,7 +135,7 @@ their variants; simple enough not to need a CRUD screen)
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID | PK |
-| name | string | unique, e.g. "Wheat", "Arabica Coffee", "Sugar ICUMSA 45" |
+| name | string | unique, e.g. "Wheat", "Maize", "Arabica Coffee", "Sugar ICUMSA 45" |
 | category | enum | GRAIN, COFFEE, SUGAR |
 | unit | enum | fixed to MT for this app |
 
