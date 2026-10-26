@@ -668,6 +668,7 @@ describe("trades", () => {
       let wheat: { id: string };
       let coffee: { id: string };
       let counterparty: { id: string };
+      let otherCounterparty: { id: string };
       let draftTradeId: string;
       let confirmedTradeId: string;
       let cancelledTradeId: string;
@@ -676,6 +677,7 @@ describe("trades", () => {
         wheat = await createCommodity("Wheat");
         coffee = await createCommodity("Coffee");
         counterparty = await createCounterparty();
+        otherCounterparty = await createCounterparty();
 
         const draft = await request(app)
           .post("/api/trades")
@@ -705,7 +707,7 @@ describe("trades", () => {
           .send(
             validTradeBody({
               commodityId: wheat.id,
-              counterpartyId: counterparty.id,
+              counterpartyId: otherCounterparty.id,
               direction: "SELL",
             }),
           );
@@ -733,6 +735,33 @@ describe("trades", () => {
         expect(res.body.map((t: { id: string }) => t.id).sort()).toEqual(
           [confirmedTradeId, cancelledTradeId].sort(),
         );
+      });
+
+      it("filters by counterpartyId", async () => {
+        const res = await request(app).get(`/api/trades?counterpartyId=${counterparty.id}`);
+        expect(res.status).toBe(200);
+        expect(res.body.map((t: { id: string }) => t.id).sort()).toEqual(
+          [draftTradeId, confirmedTradeId].sort(),
+        );
+      });
+
+      it("combines counterpartyId with another filter", async () => {
+        const res = await request(app).get(
+          `/api/trades?counterpartyId=${counterparty.id}&status=CONFIRMED`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.map((t: { id: string }) => t.id)).toEqual([confirmedTradeId]);
+      });
+
+      it("rejects a malformed counterpartyId query param with 400", async () => {
+        const res = await request(app).get("/api/trades?counterpartyId=not-a-uuid");
+        expect(res.status).toBe(400);
+      });
+
+      it("returns an empty list for a well-formed but nonexistent counterpartyId", async () => {
+        const res = await request(app).get(`/api/trades?counterpartyId=${UNKNOWN_ID}`);
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([]);
       });
     });
   });

@@ -1,6 +1,6 @@
 # Change: Filter trades by counterparty
 Requested by: Yermal Udaya Shreesha   Date: [today's date]
-Status: in progress
+Status: done
 
 ## What they asked for
 Traders need to see all deals with one counterparty quickly, for

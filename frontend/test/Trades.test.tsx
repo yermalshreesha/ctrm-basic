@@ -25,7 +25,10 @@ function renderTrades(initialEntry = "/trades") {
 }
 
 const commodities = [{ id: "c1", name: "Wheat", category: "GRAIN", unit: "MT", createdAt: "", updatedAt: "" }];
-const counterparties = [{ id: "cp1", name: "Acme Grain Co", type: "BUYER", createdAt: "", updatedAt: "" }];
+const counterparties = [
+  { id: "cp1", name: "Acme Grain Co", type: "BUYER", createdAt: "", updatedAt: "" },
+  { id: "cp2", name: "Global Traders Ltd", type: "SELLER", createdAt: "", updatedAt: "" },
+];
 
 const trade = {
   id: "t1",
@@ -129,6 +132,46 @@ describe("Trades", () => {
     );
   });
 
+  it("applies a counterpartyId filter present in the URL on initial render", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades("/trades?counterpartyId=cp1");
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => typeof u === "string" && u.includes("counterpartyId=cp1"))).toBe(
+        true,
+      ),
+    );
+  });
+
+  it("changing the counterparty filter updates the URL query params and refetches with that filter", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades();
+    await waitFor(() => expect(screen.getByLabelText("Counterparty")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Counterparty"), { target: { value: "cp2" } });
+
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("counterpartyId=cp2"));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => typeof u === "string" && u.includes("counterpartyId=cp2"))).toBe(
+        true,
+      ),
+    );
+  });
+
   it("does not show a Clear filters button when no filter is active", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === "/api/commodities") return jsonResponse(200, commodities);
@@ -186,6 +229,20 @@ describe("Trades", () => {
     await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
   });
 
+  it("shows a Clear filters button when only the counterparty filter is active", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades("/trades?counterpartyId=cp1");
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+  });
+
   it("shows a Clear filters button when a filter is changed interactively", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === "/api/commodities") return jsonResponse(200, commodities);
@@ -204,7 +261,7 @@ describe("Trades", () => {
     await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
   });
 
-  it("clicking Clear filters with all three filters set resets all of them and refetches the unfiltered list", async () => {
+  it("clicking Clear filters with all four filters set resets all of them and refetches the unfiltered list", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === "/api/commodities") return jsonResponse(200, commodities);
       if (url === "/api/counterparties") return jsonResponse(200, counterparties);
@@ -213,12 +270,13 @@ describe("Trades", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    renderTrades("/trades?status=CONFIRMED&commodityId=c1&direction=SELL");
+    renderTrades("/trades?status=CONFIRMED&commodityId=c1&direction=SELL&counterpartyId=cp1");
 
     await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
     expect(screen.getByLabelText("Status")).toHaveValue("CONFIRMED");
     expect(screen.getByLabelText("Commodity")).toHaveValue("c1");
     expect(screen.getByLabelText("Direction")).toHaveValue("SELL");
+    expect(screen.getByLabelText("Counterparty")).toHaveValue("cp1");
 
     fetchMock.mockClear();
     fireEvent.click(screen.getByText("Clear filters"));
@@ -227,6 +285,7 @@ describe("Trades", () => {
     expect(screen.getByLabelText("Status")).toHaveValue("");
     expect(screen.getByLabelText("Commodity")).toHaveValue("");
     expect(screen.getByLabelText("Direction")).toHaveValue("");
+    expect(screen.getByLabelText("Counterparty")).toHaveValue("");
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([u]) => u === "/api/trades")).toBe(true),
     );

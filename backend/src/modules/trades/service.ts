@@ -91,6 +91,7 @@ export interface ListTradesFilters {
   status?: TradeStatus;
   commodityId?: string;
   direction?: TradeDirection;
+  counterpartyId?: string;
 }
 
 // Prisma's Decimal.toString()/toJSON() normalizes away trailing zeros
@@ -122,6 +123,7 @@ export function listTrades(filters: ListTradesFilters) {
       status: filters.status,
       commodityId: filters.commodityId,
       direction: filters.direction,
+      counterpartyId: filters.counterpartyId,
     },
     orderBy: { createdAt: "desc" },
   });
