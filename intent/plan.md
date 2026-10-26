@@ -540,7 +540,8 @@ the plan's intent, but resolving ambiguity in the wording above):**
 - **API wiring in dev:** the backend has no CORS middleware, and adding
   one would be a backend change outside this phase's file list. Instead,
   `frontend/vite.config.ts` proxies `/api/*` to `http://localhost:3001`
-  (the backend's fixed port, per CLAUDE.md), so `api/client.ts` calls
+  (the backend's fixed port, per CLAUDE.md) (changed in Phase 12: the
+  port now comes from PORT in .env), so `api/client.ts` calls
   relative `/api/...` paths — no CORS needed, and it works regardless of
   which port Vite itself picks.
 - **Proving the wiring works:** the Dashboard placeholder calls the real
