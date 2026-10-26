@@ -24,8 +24,8 @@ Run all of these from the repo root (npm workspaces).
 - Start database (Postgres in Docker, `ctrm_dev` + `ctrm_test`): `npm run db:up`
   (stop with `npm run db:down`)
 - Dev (backend + frontend together): `npm run dev`
-  - Backend alone: `npm run dev -w backend` (Express on port 3001,
-    `GET /api/health`)
+  - Backend alone: `npm run dev -w backend` (Express on the port from
+    `.env`'s `PORT`, default 3002, `GET /api/health`)
   - Frontend alone: `npm run dev -w frontend` (Vite)
 - Build everything: `npm run build`
 - Test (backend, against the real `ctrm_test` database): `npm test`
@@ -63,6 +63,9 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
   uses port 5433.
 - The kr-prolines frontend often uses port 5173, so this project's
   frontend may run on 5174. Don't hard-code the frontend port.
+- kr-prolines' backend defaults to port 3001, so CTRM's backend uses
+  3002 instead (`.env`'s `PORT`) to avoid a clash when both run at
+  once.
 - This project uses npm only (package-lock.json). Never run pnpm
   here, even though kr-prolines uses it.
 
