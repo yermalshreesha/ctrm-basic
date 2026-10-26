@@ -17,6 +17,8 @@ Run three passes and tag each finding with its pass:
 - Migrations are new files, never edits; nothing deletes data
 - plan.md and spec.md are updated if the change departs from them
 - CLAUDE.md is still accurate after this change
+- List every existing test that was modified or deleted, and check
+  the change's intent allows it. Flag any test made weaker.
 
 ## What Important means here
 Important: breaks behavior, leaks data, breaks a business rule, or
