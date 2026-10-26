@@ -161,4 +161,85 @@ describe("Logistics", () => {
       expect(fetchMock.mock.calls.some(([u]) => typeof u === "string" && u.includes("warehouseId=w1"))).toBe(true),
     );
   });
+
+  it("does not show a Clear filters button when no filter is active", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/warehouses") return jsonResponse(200, warehouses);
+      if (url.startsWith("/api/shipments")) return jsonResponse(200, [shipment]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLogistics();
+
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
+    expect(screen.queryByText("Clear filters")).not.toBeInTheDocument();
+  });
+
+  it("shows a Clear filters button when only the status filter is active", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/warehouses") return jsonResponse(200, warehouses);
+      if (url.startsWith("/api/shipments")) return jsonResponse(200, [shipment]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLogistics("/logistics?status=PLANNED");
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+  });
+
+  it("shows a Clear filters button when only the warehouse filter is active", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/warehouses") return jsonResponse(200, warehouses);
+      if (url.startsWith("/api/shipments")) return jsonResponse(200, [shipment]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLogistics("/logistics?warehouseId=w1");
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+  });
+
+  it("shows a Clear filters button when a filter is changed interactively", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/warehouses") return jsonResponse(200, warehouses);
+      if (url.startsWith("/api/shipments")) return jsonResponse(200, [shipment]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLogistics();
+    await waitFor(() => expect(screen.getByLabelText("Status")).toBeInTheDocument());
+    expect(screen.queryByText("Clear filters")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "PLANNED" } });
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+  });
+
+  it("clicking Clear filters with both filters set resets both of them and refetches the unfiltered list", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/warehouses") return jsonResponse(200, warehouses);
+      if (url.startsWith("/api/shipments")) return jsonResponse(200, [shipment]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLogistics("/logistics?status=PLANNED&warehouseId=w1");
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+    expect(screen.getByLabelText("Status")).toHaveValue("PLANNED");
+    expect(screen.getByLabelText("Warehouse")).toHaveValue("w1");
+
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByText("Clear filters"));
+
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe(""));
+    expect(screen.getByLabelText("Status")).toHaveValue("");
+    expect(screen.getByLabelText("Warehouse")).toHaveValue("");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => u === "/api/shipments")).toBe(true));
+    expect(screen.queryByText("Clear filters")).not.toBeInTheDocument();
+  });
 });

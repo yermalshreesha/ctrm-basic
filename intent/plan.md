@@ -1040,3 +1040,65 @@ return to "All", the URL loses its query string, the full trade list
 reloads, and the button disappears again.
 
 ---
+
+## Phase 14 — Change 005: Clear filters button on the Logistics list
+
+**Goal:** a "Clear filters" button next to the Logistics list's status/
+warehouse filters, shown only while at least one is active, that resets
+both to "All" in one click, per
+`intent/changes/005-clear-filters-logistics.md` (recorded in spec.md §8
+and §9, AC-14/AC-15). Same behavior and style as the Trades list button
+(Phase 13) — frontend-only, no backend or data model changes.
+
+**Open design questions (recommended defaults below) — confirm with
+the product owner before implementing:**
+- **Button style.** Recommended: `.btn-secondary`, same as Phase 13's
+  Trades list button — keeps `.btn-primary` reserved for a page's one
+  primary action (ctrm-standards rule 9). (Unlike Trades, Logistics has
+  no primary action/button in its filter row today, so this doesn't
+  compete with one.)
+- **Placement.** Recommended: inside the existing `.filters` row,
+  immediately after the Warehouse filter — the intent doc says "before
+  any other actions," and since the Logistics filter row currently has
+  no other buttons/links, this is simply the last element in the row,
+  mirroring Phase 13's relative placement (right after the filter
+  controls).
+- **Visibility rule, precisely.** Recommended: purely a function of the
+  current URL params on every render (`status || warehouseId`) — same
+  mechanism as Phase 13, not a one-time flag tied to whether the button
+  was clicked.
+- **Confirmation before clearing.** Recommended: none — same rationale
+  as Phase 13 (non-destructive, instantly reversible).
+- **Clearing mechanism.** Recommended: one `setSearchParams(new
+  URLSearchParams())` call, reusing `Logistics.tsx`'s existing
+  `searchParams`/`setSearchParams` state — not two sequential
+  `updateFilter` calls, which would re-render and refetch once per
+  filter instead of once total.
+
+**Files:**
+- `frontend/src/pages/Logistics.tsx` — add the "Clear filters" button
+  and its visibility/clearing logic, per the design questions above.
+- `frontend/test/Logistics.test.tsx` — new tests (see Tests, below).
+- `intent/spec.md` — §8 and §9, already updated as part of this change.
+- `intent/changes/005-clear-filters-logistics.md` — `Status` updated to
+  `done` once this phase is implemented and verified.
+
+**Business rules implemented:** none — pure UI affordance, no new
+business rule, no backend change.
+
+**Tests:**
+- "Clear filters" is not rendered when the Logistics list has no filter
+  active (AC-15).
+- "Clear filters" is rendered once either status or warehouse is set
+  via the URL or a filter control (AC-14).
+- Clicking "Clear filters" with both filters active resets the URL to
+  have neither `status` nor `warehouseId`, refetches `GET /api/shipments`
+  with no query string, and the button itself disappears afterward
+  (AC-14, AC-15).
+
+**Manual check:** on the Logistics list, set both filters, confirm
+"Clear filters" appears; click it and confirm both dropdowns return to
+"All", the URL loses its query string, the full shipment list reloads,
+and the button disappears again.
+
+---
