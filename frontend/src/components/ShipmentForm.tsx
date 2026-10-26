@@ -86,6 +86,9 @@ export function ShipmentForm({ initial, tradeDirection, onSubmit, submitting, fi
   // origin/destination already drifted from its warehouse's name counts
   // as user-entered too, even though this form instance hasn't touched
   // it itself — otherwise switching the warehouse would clobber it.
+  // Edge case: a custom value that happens to equal the current
+  // warehouse's name is indistinguishable from an auto-filled one, so it
+  // will still get overwritten if the warehouse changes again.
   const [originTouched, setOriginTouched] = useState(() =>
     initial ? initial.origin !== initial.warehouseName : false,
   );

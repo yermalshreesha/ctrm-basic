@@ -673,6 +673,11 @@ errors shown as field-level errors on quantity, per spec §8).
   trade) with the warehouse's name, and keeps doing so on every later
   warehouse change — until the user types into that field themselves, at
   which point it is never overwritten again.
+  Fix #13: a loaded shipment whose saved origin/destination already
+  differs from its warehouse's name also counts as user-entered, even if
+  the user hasn't touched the field in this form instance — otherwise
+  editing the shipment and changing the warehouse would silently
+  overwrite that saved value.
 - **BR-3's insufficient-stock rejection** (`insufficient_stock` — a
   message-only 409, unlike `validation_failed`'s `fields` array) is
   synthesized into a field-level error on `quantityMt` client-side in
