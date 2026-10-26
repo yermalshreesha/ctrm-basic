@@ -1,6 +1,6 @@
 # Change: Guardrail hooks
 Requested by: Yermal Udaya Shreesha   Date: [today's date]
-Status: in progress
+Status: done
 
 ## What they asked for
 Some rules in CLAUDE.md and the skills were broken anyway: an applied
@@ -27,4 +27,12 @@ tests change.
 - Hooks that run lint or tests automatically after edits.
 
 ## Open questions
-- How does hook 3 know a bug fix is in progress?
+- How does hook 3 know a bug fix is in progress? **Resolved:** the
+  current branch name starts with `fix/`. Since that locks every
+  already-committed test file from the start of the branch, a new
+  failing test for the fix goes in a new file under
+  `backend/test/regressions/` or `frontend/test/regressions/`, never
+  an edit to an existing test file; an existing test genuinely needing
+  to change is a behavior change and belongs on a `change-NNN` branch
+  with its own intent doc instead. See `intent/plan.md` Phase 16 and
+  CLAUDE.md's Conventions section.

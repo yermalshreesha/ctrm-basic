@@ -50,6 +50,22 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
 - Follow the ctrm-standards skill.
 - All stock changes go through the inventory service, inside a
   database transaction.
+- Bug fixes use a `fix/...` branch. Write the failing test first, in a
+  new file under `backend/test/regressions/` or
+  `frontend/test/regressions/` (never an edit to an existing test
+  file — a guardrail hook locks every already-committed test file on a
+  `fix/` branch from the start, precisely to prevent that), commit it,
+  then fix the application code. If a fix turns out to need an
+  existing test changed, that's a behavior change, not a bug fix: move
+  it to a `change-NNN` branch with an `intent/changes/` doc instead.
+- Guardrail hooks in `.claude/settings.json` (scripts under
+  `.claude/hooks/`) block or pause a few mistakes a session has made
+  before: editing a committed migration, stopping/removing the
+  Postgres container or backgrounding a dev server, editing a
+  committed test file on a `fix/` branch, and running `prisma migrate
+  reset`/`db:test:reset` (this one pauses for approval instead of
+  blocking). See `intent/changes/007-guardrail-hooks.md` and
+  `intent/plan.md` Phase 16 for why.
 
 ## Environment
 - The developer is on Windows and uses Command Prompt (cmd).
