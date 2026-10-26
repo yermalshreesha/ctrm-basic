@@ -102,6 +102,12 @@ export function Logistics() {
           </select>
           {referenceDataError && <span className="field-note">{referenceDataError}</span>}
         </div>
+
+        {(status || warehouseId) && (
+          <button type="button" className="btn btn-secondary" onClick={() => setSearchParams(new URLSearchParams())}>
+            Clear filters
+          </button>
+        )}
       </div>
 
       {error && <Banner onDismiss={() => setError(null)}>{error}</Banner>}

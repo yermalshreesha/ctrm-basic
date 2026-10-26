@@ -1,6 +1,6 @@
 # Change: Clear filters button on the Logistics list
 Requested by: Yermal Udaya Shreesha   Date: [26-10-2026]
-Status: in progress
+Status: done
 
 ## What they asked for
 Same as change 004, for the Logistics list: after filtering
