@@ -64,8 +64,11 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
   Postgres container or backgrounding a dev server, editing a
   committed test file on a `fix/` branch, and running `prisma migrate
   reset`/`db:test:reset` (this one pauses for approval instead of
-  blocking). See `intent/changes/007-guardrail-hooks.md` and
-  `intent/plan.md` Phase 16 for why.
+  blocking). The `fix/` branch test lock covers any file under
+  `backend/test/` or `frontend/test/`, so test harness files like
+  `test/setup.ts` are locked too, not just `*.test.ts` files. See
+  `intent/changes/007-guardrail-hooks.md` and `intent/plan.md` Phase
+  16 for why.
 
 ## Environment
 - The developer is on Windows and uses Command Prompt (cmd).
