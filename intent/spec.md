@@ -460,7 +460,11 @@ dropdown options, populated from `GET /api/counterparties` and `GET
   only, per product owner decision).
 - **Logistics (list)** — table of shipments across all trades: trade
   (linked), commodity, warehouse, transport mode, origin, destination,
-  planned/actual dates, status; filters by status/warehouse.
+  planned/actual dates, status; filters by status/warehouse. A "Clear
+  filters" button sits alongside the filters and is shown only while at
+  least one of the two is active (not "All"); clicking it resets both
+  to "All" and the list shows every shipment again — per
+  `intent/changes/005-clear-filters-logistics.md`.
 - **Shipment detail / form** — all Shipment fields; while PLANNED,
   fields editable and "Depart" and "Delete" actions are shown; while
   IN_TRANSIT, a "Deliver" action is shown; while DELIVERED, read-only
@@ -552,6 +556,16 @@ stock"**
   the list shows every trade again (matching the unfiltered
   `GET /api/trades` response).
 - AC-13: With all three filters at "All" (none active, including right
+  after Clear filters is clicked), the "Clear filters" button is not
+  shown.
+
+**"Filters on the Logistics list can be cleared with one click"**
+- AC-14: With at least one of the Logistics list's status/warehouse
+  filters set to a value other than "All", a "Clear filters" button is
+  visible; clicking it resets both filters to "All" and the list shows
+  every shipment again (matching the unfiltered `GET /api/shipments`
+  response).
+- AC-15: With both filters at "All" (none active, including right
   after Clear filters is clicked), the "Clear filters" button is not
   shown.
 
