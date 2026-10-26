@@ -396,7 +396,7 @@ Warehouse in this version; rows come from a seed script. See section
 10 for the deferred editable-lists feature.
 
 ### Trades
-- `GET /api/trades` — list, filterable by `status`, `commodityId`, `direction`
+- `GET /api/trades` — list, filterable by `status`, `commodityId`, `direction`, `counterpartyId`
 - `POST /api/trades` — create (status defaults to DRAFT)
 - `GET /api/trades/:id` — includes its shipments
 - `PATCH /api/trades/:id` — edit fields, only while status is DRAFT
@@ -440,11 +440,14 @@ dropdown options, populated from `GET /api/counterparties` and `GET
   mode, origin → destination, status, planned dates).
 - **Trades (list)** — table of trades: commodity, direction, counterparty,
   quantity, price, currency, delivery period, status; filters by
-  status/commodity/direction; "New trade" button. A "Clear filters"
-  button sits alongside the filters and is shown only while at least
-  one of the three is active (not "All"); clicking it resets all three
-  to "All" and the list shows every trade again — per
-  `intent/changes/004-clear-filters.md`.
+  status/commodity/direction/counterparty — the Counterparty dropdown
+  sits after Direction, its options coming from `GET /api/counterparties`
+  plus "All" (the default), per `intent/changes/006-counterparty-filters.md`;
+  "New trade" button. A "Clear filters" button sits alongside the filters
+  and is shown only while at least one of the four is active (not "All");
+  clicking it resets all four to "All" and the list shows every trade
+  again — per `intent/changes/004-clear-filters.md`, extended to the
+  counterparty filter by `intent/changes/006-counterparty-filters.md`.
 - **Trade detail / form** — all Trade fields; while DRAFT, fields are
   editable and Confirm/Cancel actions are shown; while CONFIRMED, shows
   Complete/Cancel actions and the list of linked shipments (with a
@@ -551,13 +554,22 @@ stock"**
 
 **"Filters on the Trades list can be cleared with one click"**
 - AC-12: With at least one of the Trades list's status/commodity/
-  direction filters set to a value other than "All", a "Clear filters"
-  button is visible; clicking it resets all three filters to "All" and
-  the list shows every trade again (matching the unfiltered
-  `GET /api/trades` response).
-- AC-13: With all three filters at "All" (none active, including right
+  direction/counterparty filters set to a value other than "All", a
+  "Clear filters" button is visible; clicking it resets all four
+  filters to "All" and the list shows every trade again (matching the
+  unfiltered `GET /api/trades` response).
+- AC-13: With all four filters at "All" (none active, including right
   after Clear filters is clicked), the "Clear filters" button is not
   shown.
+
+**"Trades with one counterparty can be found quickly"**
+- AC-16: Filtering the Trades list by a counterparty shows only that
+  counterparty's trades, matching `GET /api/trades?counterpartyId=...`;
+  combined with another active filter (e.g. status), only trades
+  satisfying both are shown.
+- AC-17: The counterparty filter choice is kept in the URL and survives
+  a page refresh, same as the existing status/commodity/direction
+  filters.
 
 **"Filters on the Logistics list can be cleared with one click"**
 - AC-14: With at least one of the Logistics list's status/warehouse

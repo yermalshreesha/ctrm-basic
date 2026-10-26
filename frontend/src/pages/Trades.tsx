@@ -18,6 +18,7 @@ export function Trades() {
   const status = searchParams.get("status") ?? "";
   const commodityId = searchParams.get("commodityId") ?? "";
   const direction = searchParams.get("direction") ?? "";
+  const counterpartyId = searchParams.get("counterpartyId") ?? "";
 
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export function Trades() {
     if (status) query.set("status", status);
     if (commodityId) query.set("commodityId", commodityId);
     if (direction) query.set("direction", direction);
+    if (counterpartyId) query.set("counterpartyId", counterpartyId);
     const queryString = query.toString();
 
     apiClient
@@ -71,7 +73,7 @@ export function Trades() {
     return () => {
       cancelled = true;
     };
-  }, [status, commodityId, direction]);
+  }, [status, commodityId, direction, counterpartyId]);
 
   function updateFilter(key: string, value: string) {
     const next = new URLSearchParams(searchParams);
@@ -134,7 +136,23 @@ export function Trades() {
           </select>
         </div>
 
-        {(status || commodityId || direction) && (
+        <div className="filter">
+          <label htmlFor="filter-counterparty">Counterparty</label>
+          <select
+            id="filter-counterparty"
+            value={counterpartyId}
+            onChange={(e) => updateFilter("counterpartyId", e.target.value)}
+          >
+            <option value="">All</option>
+            {counterparties.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {(status || commodityId || direction || counterpartyId) && (
           <button type="button" className="btn btn-secondary" onClick={() => setSearchParams(new URLSearchParams())}>
             Clear filters
           </button>

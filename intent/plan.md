@@ -1102,3 +1102,76 @@ business rule, no backend change.
 and the button disappears again.
 
 ---
+
+## Phase 15 — Change 006: Counterparty filter on the Trades list
+
+**Goal:** a "Counterparty" dropdown on the Trades list, after Direction,
+so traders can see all of one counterparty's trades at a glance, per
+`intent/changes/006-counterparty-filters.md` (recorded in spec.md §7,
+§8 and §9, AC-16/AC-17). It works together with the existing status/
+commodity/direction filters, is kept in the URL, and the existing
+Phase 13 "Clear filters" button is extended to a fourth filter.
+
+**Files:**
+- `backend/src/modules/trades/schema.ts` — `listTradesQuerySchema` gains
+  `counterpartyId: z.string().uuid({ message: "must be a valid UUID" }).optional()`,
+  the same shape as the existing `commodityId` filter field (a malformed
+  id is rejected 400; a well-formed but nonexistent id is simply not
+  matched by any trade, same as `commodityId` today — no existence
+  check, since this is a list filter, not a foreign key being written).
+- `backend/src/modules/trades/service.ts` — `ListTradesFilters` gains
+  `counterpartyId?: string`; `listTrades`'s `where` clause gains
+  `counterpartyId: filters.counterpartyId`, combined with the existing
+  filters exactly as `commodityId` is today (Prisma ANDs all three/four
+  together when present).
+- `backend/test/trades.test.ts` — new filter test (see Tests, below).
+- `frontend/src/pages/Trades.tsx` — add a "Counterparty" `<select>`
+  after the Direction filter, backed by the `counterparties` reference
+  data already fetched on this page (currently used only to render
+  names in the table); reuse `updateFilter("counterpartyId", ...)`,
+  the existing `status`/`commodityId`/`direction` pattern; extend the
+  "Clear filters" visibility check and the query-string builder to
+  include `counterpartyId`.
+- `frontend/test/Trades.test.tsx` — existing "Clear filters" tests
+  extended to a fourth filter (see Tests, below); new counterparty
+  filter tests.
+- `intent/spec.md` — §7, §8 and §9, already updated as part of this
+  change.
+- `intent/changes/006-counterparty-filters.md` — `Status` updated to
+  `done` once this phase is implemented and verified.
+
+**Business rules implemented:** none — a new list filter and dropdown,
+no new business rule, no database or data model change (per the change
+request's "Affects existing"/"Out of scope" sections).
+
+**Tests:**
+- Backend: `GET /api/trades?counterpartyId=<id>` returns only that
+  counterparty's trades (AC-16).
+- Backend: combining `counterpartyId` with another filter (e.g.
+  `status`) returns only trades matching both (AC-16).
+- Backend: a malformed (non-UUID) `counterpartyId` query param is
+  rejected 400, same as a malformed `commodityId` today.
+- Backend: a well-formed but nonexistent `counterpartyId` returns an
+  empty list, not an error, same as `commodityId` today.
+- Frontend: a `counterpartyId` filter present in the URL on initial
+  render is applied (fetched with that query param), same as the
+  existing status/commodity/direction tests.
+- Frontend: changing the Counterparty dropdown updates the URL query
+  params and refetches with that filter.
+- Frontend: "Clear filters" is shown when only the counterparty filter
+  is active, and hidden again when none of the four filters is active
+  (extends the existing "no filter active" / "one filter active" tests
+  to the fourth filter).
+- Frontend: clicking "Clear filters" with all four filters set (not
+  just the existing three) resets all of them, refetches the unfiltered
+  list, and the button disappears afterward (extends the existing
+  "clicking Clear filters with all three filters set" test to four).
+
+**Manual check:** on the Trades list, pick a counterparty from the new
+dropdown and confirm only that counterparty's trades are shown; combine
+it with the Status filter and confirm both apply together; refresh the
+page and confirm the counterparty filter survives; click "Clear
+filters" and confirm all four dropdowns (including Counterparty) return
+to "All" and the button disappears.
+
+---
