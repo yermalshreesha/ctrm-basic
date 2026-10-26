@@ -134,6 +134,12 @@ export function Trades() {
           </select>
         </div>
 
+        {(status || commodityId || direction) && (
+          <button type="button" className="btn btn-secondary" onClick={() => setSearchParams(new URLSearchParams())}>
+            Clear filters
+          </button>
+        )}
+
         <Link to="/trades/new" className="btn btn-primary">
           New trade
         </Link>
