@@ -1,5 +1,5 @@
 # Change: Filter trades by counterparty
-Requested by: Yermal Udaya Shreesha   Date: [today's date]
+Requested by: Yermal Udaya Shreesha   Date: [26-10-2026]
 Status: done
 
 ## What they asked for
