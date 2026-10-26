@@ -440,7 +440,11 @@ dropdown options, populated from `GET /api/counterparties` and `GET
   mode, origin → destination, status, planned dates).
 - **Trades (list)** — table of trades: commodity, direction, counterparty,
   quantity, price, currency, delivery period, status; filters by
-  status/commodity/direction; "New trade" button.
+  status/commodity/direction; "New trade" button. A "Clear filters"
+  button sits alongside the filters and is shown only while at least
+  one of the three is active (not "All"); clicking it resets all three
+  to "All" and the list shows every trade again — per
+  `intent/changes/004-clear-filters.md`.
 - **Trade detail / form** — all Trade fields; while DRAFT, fields are
   editable and Confirm/Cancel actions are shown; while CONFIRMED, shows
   Complete/Cancel actions and the list of linked shipments (with a
@@ -540,6 +544,16 @@ stock"**
 - AC-11: Attempting to change `notes` via `PATCH` once the trade is no
   longer DRAFT (CONFIRMED, COMPLETED or CANCELLED) is rejected, same
   as any other Trade field edit outside DRAFT.
+
+**"Filters on the Trades list can be cleared with one click"**
+- AC-12: With at least one of the Trades list's status/commodity/
+  direction filters set to a value other than "All", a "Clear filters"
+  button is visible; clicking it resets all three filters to "All" and
+  the list shows every trade again (matching the unfiltered
+  `GET /api/trades` response).
+- AC-13: With all three filters at "All" (none active, including right
+  after Clear filters is clicked), the "Clear filters" button is not
+  shown.
 
 ## 10. Out of scope / future intent
 

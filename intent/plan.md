@@ -979,3 +979,64 @@ reaches `/api/health` through the proxy with no console errors; then
 change `.env`'s `PORT` to a third value (e.g. `3099`), restart `npm run
 dev`, and confirm both sides pick it up with zero edits to
 `vite.config.ts`.
+
+---
+
+## Phase 13 — Change 004: Clear filters button on the Trades list
+
+**Goal:** a "Clear filters" button next to the Trades list's status/
+commodity/direction filters, shown only while at least one is active,
+that resets all three to "All" in one click, per
+`intent/changes/004-clear-filters.md` (recorded in spec.md §8 and §9,
+AC-12/AC-13). Frontend-only — no backend or data model changes.
+
+**Open design questions (recommended defaults below) — confirm with
+the product owner before implementing:**
+- **Button style.** Recommended: `.btn-secondary` (already defined in
+  `frontend/src/index.css`, used elsewhere for non-primary actions) —
+  keeps `.btn-primary` reserved for "New trade" as the one clear
+  primary action on the page, per ctrm-standards rule 9.
+- **Placement.** Recommended: inside the existing `.filters` row,
+  immediately after the Direction filter and before "New trade" — reads
+  as part of the filter controls, not a separate page-level action.
+- **Visibility rule, precisely.** Recommended: purely a function of the
+  current URL params on every render (`status || commodityId ||
+  direction`) — not a one-time flag tied to whether the button was
+  clicked. This also means manually changing every filter back to "All"
+  by hand hides the button again, with no special-casing needed.
+- **Confirmation before clearing.** Recommended: none — unlike Cancel/
+  Complete (Phase 6), clearing filters is non-destructive and instantly
+  reversible (the trades aren't changed, just which ones are shown).
+- **Clearing mechanism.** Recommended: one `setSearchParams(new
+  URLSearchParams())` call, reusing the same `searchParams`/
+  `setSearchParams` state `updateFilter` already uses — not three
+  sequential `updateFilter` calls, which would re-render and refetch
+  once per filter instead of once total.
+
+**Files:**
+- `frontend/src/pages/Trades.tsx` — add the "Clear filters" button and
+  its visibility/clearing logic, per the design questions above.
+- `frontend/test/Trades.test.tsx` — new tests (see Tests, below).
+- `intent/spec.md` — §8 and §9, already updated as part of this change.
+- `intent/changes/004-clear-filters.md` — `Status` updated to `done`
+  once this phase is implemented and verified.
+
+**Business rules implemented:** none — pure UI affordance, no new
+business rule, no backend change.
+
+**Tests:**
+- "Clear filters" is not rendered when the Trades list has no filter
+  active (AC-13).
+- "Clear filters" is rendered once any one of status/commodity/
+  direction is set via the URL or a filter control (AC-12).
+- Clicking "Clear filters" with multiple filters active resets the URL
+  to have none of `status`/`commodityId`/`direction`, refetches
+  `GET /api/trades` with no query string, and the button itself
+  disappears afterward (AC-12, AC-13).
+
+**Manual check:** on the Trades list, set all three filters, confirm
+"Clear filters" appears; click it and confirm all three dropdowns
+return to "All", the URL loses its query string, the full trade list
+reloads, and the button disappears again.
+
+---

@@ -129,6 +129,110 @@ describe("Trades", () => {
     );
   });
 
+  it("does not show a Clear filters button when no filter is active", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades();
+
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
+    expect(screen.queryByText("Clear filters")).not.toBeInTheDocument();
+  });
+
+  it("shows a Clear filters button when only the status filter is active", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades("/trades?status=CONFIRMED");
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+  });
+
+  it("shows a Clear filters button when only the commodity filter is active", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades("/trades?commodityId=c1");
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+  });
+
+  it("shows a Clear filters button when only the direction filter is active", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades("/trades?direction=SELL");
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+  });
+
+  it("shows a Clear filters button when a filter is changed interactively", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades();
+    await waitFor(() => expect(screen.getByLabelText("Status")).toBeInTheDocument());
+    expect(screen.queryByText("Clear filters")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "CONFIRMED" } });
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+  });
+
+  it("clicking Clear filters with all three filters set resets all of them and refetches the unfiltered list", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades("/trades?status=CONFIRMED&commodityId=c1&direction=SELL");
+
+    await waitFor(() => expect(screen.getByText("Clear filters")).toBeInTheDocument());
+    expect(screen.getByLabelText("Status")).toHaveValue("CONFIRMED");
+    expect(screen.getByLabelText("Commodity")).toHaveValue("c1");
+    expect(screen.getByLabelText("Direction")).toHaveValue("SELL");
+
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByText("Clear filters"));
+
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe(""));
+    expect(screen.getByLabelText("Status")).toHaveValue("");
+    expect(screen.getByLabelText("Commodity")).toHaveValue("");
+    expect(screen.getByLabelText("Direction")).toHaveValue("");
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => u === "/api/trades")).toBe(true),
+    );
+    expect(screen.queryByText("Clear filters")).not.toBeInTheDocument();
+  });
+
   it('navigates to /trades/new when "New trade" is clicked', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === "/api/commodities" || url === "/api/counterparties") return jsonResponse(200, []);
