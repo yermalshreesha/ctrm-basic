@@ -1175,3 +1175,182 @@ filters" and confirm all four dropdowns (including Counterparty) return
 to "All" and the button disappears.
 
 ---
+
+## Phase 16 — Change 007: Guardrail hooks
+
+**Goal:** stop three mistakes a Claude Code session has actually made in
+this repo — editing an already-applied migration, stopping/removing the
+Postgres container (and backgrounding a dev server), and editing a test
+file to make a bug disappear instead of fixing it — by blocking them
+with `PreToolUse` hooks instead of relying on a written rule, per
+`intent/changes/007-guardrail-hooks.md`. Hooks only; no app code, data
+or test changes.
+
+**Decision, hook mechanics (shared by all three, detail per hook
+below):**
+- Hooks are registered in `.claude/settings.json` (committed, shared
+  with every session on this repo) and call Node.js scripts under
+  `.claude/hooks/`, not shell scripts, since the developer is on
+  Windows and the scripts must run the same way whether invoked from
+  PowerShell, cmd, or bash — per CLAUDE.md's environment note.
+- Each hook reads the tool-call JSON Claude Code pipes to its stdin,
+  inspects `tool_name`/`tool_input`, and writes a decision to stdout as
+  `{"hookSpecificOutput": {"hookEventName": "PreToolUse",
+  "permissionDecision": "allow" | "deny" | "ask",
+  "permissionDecisionReason": "<message>"}}`, then exits `0`. `"deny"`
+  blocks the call and returns the reason to Claude as an error; `"ask"`
+  pauses for the user's own approval (the normal permission prompt),
+  showing the reason there; omitting output (or `"allow"`) lets the
+  call proceed normally. All three hooks share one helper,
+  `.claude/hooks/lib/hookUtil.js`, for reading stdin and emitting this
+  JSON, plus the small git helpers Hooks 1 and 3 both need (below).
+- **Known limitation, both Hook 1 and Hook 3:** `PreToolUse` only fires
+  for tool calls — their matchers are `Edit|Write`, so a migration or
+  test file changed via a shell command (`Bash`/`PowerShell`, e.g. a
+  `node -e "fs.writeFileSync(...)"` or `Set-Content`) is not inspected
+  by either hook and is not caught. Worth revisiting (e.g. extending
+  Hook 2's matcher to also scan `Bash`/`PowerShell` commands for writes
+  to these paths) if that gap is ever actually hit; out of scope for
+  this phase.
+
+### Hook 1 — block editing a migration once it's committed
+- **Event/matcher:** `PreToolUse`, matcher `Edit|Write` (`Write` can
+  create a brand new file as well as overwrite an existing one, so it
+  needs the same check as `Edit`).
+- **Checks:** the target path matches
+  `backend/prisma/migrations/**/migration.sql`, AND the file is tracked
+  in `HEAD` — checked with `git cat-file -e HEAD:<relative path>`
+  (exit `0` means it's part of the current commit). An uncommitted new
+  migration (untracked, or staged but never committed) is not in
+  `HEAD` yet and is always allowed, no matter how many times it's
+  rewritten before that first commit; once committed, every further
+  edit is blocked, regardless of the working tree's own state.
+- **Message Claude sees:**
+  > Blocked: `<path>` is a committed migration. Editing a migration
+  > that's already in git history desyncs the database's migration
+  > history from the migrations folder — anyone (including CI) who
+  > re-applies migrations from scratch gets a different result than
+  > this database already has. To fix a mistake in it, create a new
+  > migration that corrects it instead (edit `schema.prisma` and run
+  > `npm run db:migrate`, or hand-write a new timestamped migration
+  > folder) — the same pattern already used for the trade check
+  > constraints and the Corn→Maize rename.
+
+### Hook 2 — database/dev-server guardrails
+- **Event/matcher:** `PreToolUse`, matcher `Bash|PowerShell`.
+- **Checks:**
+  1. **Deny.** `tool_input.command` matches a container stop/remove
+     pattern: `docker (compose )?(down|stop|kill|rm)`, `docker-compose
+     (down|stop|kill|rm)`, `docker volume rm`, `docker system prune`,
+     or the npm script `db:down` — this also catches `npm run db:down`
+     even though CLAUDE.md documents it as the normal way to stop the
+     database, because the point of the hook is to force a pause
+     before a Claude session (not a human at the keyboard) does it.
+  2. **Deny.** A dev-server start: `tool_input.run_in_background ===
+     true` AND the command matches `npm run dev`, `npm start`, `vite`,
+     `nodemon`, `ts-node-dev`, or `concurrently` — OR the command text
+     itself backgrounds a process (trailing ` &`, `nohup`, `disown`,
+     Windows `start /b`, PowerShell `Start-Process`) even without the
+     tool's own `run_in_background` flag set.
+  3. **Ask.** `tool_input.command` matches `prisma migrate reset` (any
+     invocation — directly, via `npx`, or via `db:migrate`'s own
+     `run-with-env.mjs` wrapper) or references the npm script
+     `db:test:reset`. Unlike checks 1-2, this doesn't block outright:
+     it drops into the normal permission prompt so the user approves
+     or denies it themselves, since `db:test:reset` is a legitimate,
+     CLAUDE.md-documented way to repair a broken test database, but a
+     bare `prisma migrate reset` run outside that script's
+     test-database wrapper would reset whatever database
+     `DATABASE_URL` currently points at — `ctrm_dev` by default.
+- **Message Claude sees (container case, deny):**
+  > Blocked: `<command>` stops or removes the project's Postgres
+  > container. It should keep running for the rest of the session —
+  > if it genuinely needs to be stopped or removed, ask the user to
+  > run `npm run db:down` (or `docker compose down`) themselves.
+- **Message Claude sees (background dev-server case, deny):**
+  > Blocked: starting a dev server in the background leaves a process
+  > the user can't see that outlives this command. Run `npm run dev`
+  > in the foreground so its output stays visible and it stops when
+  > the tool call does, or ask the user to start it themselves in
+  > their own terminal.
+- **Message shown at the approval prompt (reset case, ask):**
+  > `<command>` drops and recreates a database from scratch. If this
+  > is `db:test:reset` against `ctrm_test`, that's expected and safe;
+  > if it's a bare `prisma migrate reset` it may target `ctrm_dev`
+  > instead. Confirm this is the database and the intent before it
+  > runs.
+
+### Hook 3 — block editing a test file once the failing test is committed
+The playbook for a bug fix is: write the failing test first and commit
+it, *then* fix the application code — test edits are only meant to be
+blocked for the second part. A blanket "no test edits on a `fix/`
+branch" rule would also block step one, so this hook uses the same
+committed-vs-not distinction as Hook 1, scoped per file instead of
+forever: a test file is editable right up until a commit captures it
+with no further changes pending, then it's frozen.
+- **Event/matcher:** `PreToolUse`, matcher `Edit|Write`.
+- **Checks:** the target path matches a test file (`backend/test/**`,
+  `frontend/test/**`, or `*.test.ts(x)`), AND the current branch starts
+  with `fix/` (same convention as before — off this branch, Hook 3
+  never fires), AND the file is both tracked in `HEAD` and clean
+  (`git diff --quiet HEAD -- <path>` exits `0`, i.e. the working copy
+  exactly matches the last commit). A file that's untracked (the
+  failing test, still being written, never committed) or tracked but
+  currently dirty (edited again since its last commit, not yet
+  re-committed) is allowed either way — both are "still writing the
+  test" states. Only a file that's tracked *and* clean — last touched
+  by a commit, nothing pending since — is blocked, since the only way
+  to reach that state is "already committed, nothing changed since."
+- **Message Claude sees:**
+  > Blocked: `<path>` is a committed test file on a `fix/` branch, with
+  > no uncommitted changes to it — it looks like the failing test is
+  > already captured in a commit. Fix the application code the test
+  > caught, not the test itself. If the test genuinely needs changing,
+  > say so and get the user's agreement first.
+
+**Files:**
+- `.claude/settings.json` — new; registers all three `PreToolUse` hooks.
+- `.claude/hooks/block-migration-edit.js` — Hook 1.
+- `.claude/hooks/block-db-guardrails.js` — Hook 2 (container stop/
+  remove + background dev-server denies, reset-command ask).
+- `.claude/hooks/block-bugfix-test-edit.js` — Hook 3.
+- `.claude/hooks/lib/hookUtil.js` — shared helper: read/parse stdin
+  JSON, emit the `allow`/`deny`/`ask` output, and the two git checks
+  Hooks 1 and 3 both need (`isTrackedAtHead(path)`,
+  `isCleanAtHead(path)`).
+- `CLAUDE.md` — a short note under Conventions naming the `fix/...`
+  branch convention Hook 3 relies on (including "commit the failing
+  test before starting the fix"), and that guardrail hooks exist and
+  why (so a future session isn't surprised by a block).
+- `intent/changes/007-guardrail-hooks.md` — `Status` to `done`, open
+  question resolved, once implemented and verified.
+
+**intent/spec.md:** no change. spec.md documents the application's own
+requirements and business rules (trades, logistics, inventory,
+dashboard) — these hooks constrain how a Claude Code session behaves in
+this repo, not the application, the same reasoning Phase 12 (backend
+port) used for not touching spec.md.
+
+**Business rules implemented:** none — tooling/process only.
+
+**Tests:** none planned — hooks aren't app code and aren't exercised by
+Vitest; verified manually, same as Phase 12/13's "Tests: none planned."
+
+**Manual check:**
+- Create a new migration file (not yet committed) and confirm it's
+  editable; commit it, try to `Edit` it again, and confirm Hook 1
+  blocks it.
+- Ask Claude to run `docker compose down` (or `npm run db:down`) and
+  confirm it's denied; ask it to start `npm run dev` in the background
+  and confirm that's denied too; confirm a normal foreground `npm run
+  dev` still works; run `npm run db:test:reset` (or a bare `prisma
+  migrate reset`) and confirm it pauses for approval instead of running
+  or being denied outright.
+- On a branch named `fix/...`: write a new failing test (uncommitted)
+  and confirm it's editable; commit it; try to edit that same test file
+  again and confirm Hook 3 blocks it; confirm editing application code
+  is unaffected. On `main` (or a `change-NNN-*` branch), confirm the
+  same committed test file stays editable (Hook 3 doesn't apply off a
+  `fix/` branch).
+
+---
