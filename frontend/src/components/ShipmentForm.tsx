@@ -82,10 +82,16 @@ export function ShipmentForm({ initial, tradeDirection, onSubmit, submitting, fi
   const [requiredErrors, setRequiredErrors] = useState<Partial<Record<keyof ShipmentFormValues, string>>>({});
   // Whichever of origin/destination the user has actually typed into
   // stops being auto-filled from the warehouse selection — see the
-  // warehouse `onChange` handler below. Starts false even in edit mode:
-  // only edits made in this form instance count as "manual".
-  const [originTouched, setOriginTouched] = useState(false);
-  const [destinationTouched, setDestinationTouched] = useState(false);
+  // warehouse `onChange` handler below. A loaded shipment whose
+  // origin/destination already drifted from its warehouse's name counts
+  // as user-entered too, even though this form instance hasn't touched
+  // it itself — otherwise switching the warehouse would clobber it.
+  const [originTouched, setOriginTouched] = useState(() =>
+    initial ? initial.origin !== initial.warehouseName : false,
+  );
+  const [destinationTouched, setDestinationTouched] = useState(() =>
+    initial ? initial.destination !== initial.warehouseName : false,
+  );
 
   useEffect(() => {
     let cancelled = false;
