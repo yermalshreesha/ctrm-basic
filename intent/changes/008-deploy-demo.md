@@ -34,6 +34,29 @@ laptop, following the playbook's Deploy stage.
 - A custom domain name.
 - Claude running inside the pipeline (needs an API key; later).
 
-## Open questions
-- Does the free tier allow two databases (staging and production)?
-- Should demo data be reset automatically?
+## Decisions
+Design covered in full in `intent/spec.md` section 11 (and decisions
+7-9 in section 2); implementation split into `intent/plan.md` Phases
+17-22. Summary:
+- **Databases:** Render's free tier allows only one Postgres database
+  per workspace (confirmed against Render's current docs), not two —
+  one free instance holds two logical databases, `ctrm_staging` and
+  `ctrm_production`, the same pattern already used locally for
+  `ctrm_dev`/`ctrm_test`. Both environments expire together; accepted
+  since both only ever hold demo data.
+- **Demo data reset:** not automated. Only the fixed reference-data
+  seed re-runs (idempotently) on every boot; Trade/Shipment/Inventory
+  data is never wiped by anything built in this change.
+- **Staging deploy trigger:** Render's own `autoDeployTrigger:
+  checksPass`, not a GitHub Actions step — deploys once GitHub's CI
+  check passes, with no extra pipeline code.
+- **Production deploy/approval:** a GitHub Actions job gated on a
+  `production` Environment (required reviewer, set up once in GitHub's
+  UI) calls the production service's Render deploy hook.
+- **Rollback:** `npm run rollback -- <sha>` (`git revert` + push),
+  re-entering the normal pipeline rather than a platform-specific
+  mechanism.
+- **Smoke test:** Render's `healthCheckPath: /api/health`, gating every
+  deploy and rollback natively — no custom polling code required for
+  this to work, though Phase 20 adds an optional visibility poll in the
+  production workflow run itself.
