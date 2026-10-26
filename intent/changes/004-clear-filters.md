@@ -1,6 +1,6 @@
 # Change: Clear filters button on the Trades list
 Requested by: Yermal Udaya Shreesha   Date: [today's date]
-Status: in progress
+Status: done
 
 ## What they asked for
 After filtering the Trades list, resetting means changing each
