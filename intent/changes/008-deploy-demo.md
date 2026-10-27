@@ -27,6 +27,13 @@ laptop, following the playbook's Deploy stage.
   demo data is allowed, and the demo is short-lived.
 - Free tier limits: the app sleeps when idle (about a minute to wake),
   and free databases expire after about 30 days.
+- Staging and production share one free Postgres server (one instance,
+  two logical databases — Render's free tier allows only one instance
+  per workspace). They are less isolated than separate instances would
+  be: heavy load or a runaway query in staging can affect production's
+  performance on the same server, and both environments expire and get
+  recreated together rather than independently. Accepted since both
+  only ever hold demo data.
 
 ## Out of scope
 - Login or user accounts.

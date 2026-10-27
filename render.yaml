@@ -1,0 +1,47 @@
+# Render Blueprint for CTRM-Basic (intent/changes/008-deploy-demo.md,
+# intent/plan.md Phase 19, intent/spec.md section 11).
+#
+# One free Postgres instance holds two logical databases, ctrm_staging
+# and ctrm_production - Render's free tier allows only one Postgres
+# instance per workspace. This blueprint creates and wires only
+# ctrm_staging automatically; ctrm_production is created by hand once
+# and its connection string pasted into the ctrm-production service's
+# DATABASE_URL (see intent/plan.md Phase 19's manual step).
+
+databases:
+  - name: ctrm-postgres
+    databaseName: ctrm_staging
+    plan: free
+
+services:
+  - type: web
+    name: ctrm-staging
+    runtime: node
+    plan: free
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -w backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ctrm-postgres
+          property: connectionString
+
+  - type: web
+    name: ctrm-production
+    runtime: node
+    plan: free
+    branch: main
+    autoDeployTrigger: off
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -w backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
