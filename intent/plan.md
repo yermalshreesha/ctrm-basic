@@ -1519,7 +1519,8 @@ through Render's dashboard to create each service.
 - `render.yaml` — new, at repo root.
 - `intent/spec.md` — §11, decision 7.
 - `intent/changes/008-deploy-demo.md` — "does the free tier allow two
-  databases?" open question resolved.
+  databases?" open question resolved; shared-database isolation risk
+  recorded.
 
 **Business rules implemented:** none — deployment infrastructure only.
 
@@ -1527,10 +1528,31 @@ through Render's dashboard to create each service.
 manually (below) and implicitly by every later phase's deploys
 succeeding.
 
+**Manual step — creating the production database** (one-time, done by
+hand after the Blueprint's first sync creates `ctrm-postgres`, since it
+isn't expressible in `render.yaml`):
+1. In the Render dashboard, open the `ctrm-postgres` database resource
+   → **Connect** tab, and copy its **External Database URL** (needed
+   to connect with `psql` from a local machine; the connection string
+   ends in the default database name Render created, e.g. `.../ctrm_staging`
+   or `.../ctrm`).
+2. Run `psql "<that external URL>" -c "CREATE DATABASE ctrm_production;"`
+   to create the second logical database on the same instance — the
+   same manual pattern as the one-time local `ctrm_dev`/`ctrm_test`
+   database creation.
+3. Build the production connection string by copying the same External
+   Database URL and replacing only the database name at the end (after
+   the final `/`) with `ctrm_production`.
+4. In the Render dashboard, open the `ctrm-production` **web service**
+   → **Environment** tab. `DATABASE_URL` appears there as a variable
+   needing a manually-entered value (from `render.yaml`'s `sync: false`)
+   — paste the string from step 3 into it and save, which triggers a
+   redeploy of `ctrm-production` picking it up.
+
 **Manual check:** connect the repo as a Render Blueprint; confirm both
-services and the one database are created as described; manually
-create the second logical database and point `ctrm-production`'s
-`DATABASE_URL` at it; trigger `ctrm-staging`'s first deploy (e.g. by
+services and the one database are created as described; complete the
+manual step above and confirm `ctrm-production`'s environment shows the
+new `DATABASE_URL`; trigger `ctrm-staging`'s first deploy (e.g. by
 pushing a trivial commit to `main` once CI is green) and confirm it
 goes live and `GET /api/health` returns 200 through Render's own URL.
 
