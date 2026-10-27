@@ -1431,6 +1431,15 @@ seed script are idempotent, so running them on every boot (including
 every cold-start wake from sleep) is safe and needs no new "has this
 run before" state.
 
+**Important constraint:** `prisma` and `tsx`, which the wrapper's
+migrate and seed steps depend on, are `backend/package.json`
+`devDependencies`, not `dependencies` — unchanged from before this
+phase. The host's install step at deploy time must therefore install
+dev dependencies too (e.g. plain `npm ci`, never `npm ci --omit=dev`
+or an install run with an `NODE_ENV=production` that causes npm to
+skip them) or this wrapper fails at step 1 or 2 with a "command not
+found" error. See Phase 19's `buildCommand`.
+
 **Files:**
 - `backend/package.json` — new `start` script (or a
   `backend/scripts/start-prod.mjs` wrapper, consistent with the
@@ -1447,14 +1456,32 @@ BR-9 (fixed reference data, no create/edit/delete API) is unaffected:
 the seed script still only upserts Commodity/Counterparty/Warehouse
 rows, never Trade/Shipment data.
 
-**Tests:** none planned — not business logic; Render's own deploy
-health check (Phase 19) and the manual check below are the
-verification, same as Phase 12/16's "Tests: none planned."
+**Tests:**
+- New (`backend/test/startProd.test.ts`): running `scripts/
+  start-prod.mjs` as a child process with an invalid `DATABASE_URL`
+  exits non-zero and the server never starts (`prisma migrate deploy`
+  fails first and aborts the chain before `tsx prisma/seed.ts` or
+  `node dist/server.js` ever runs, so a broken deploy fails loudly
+  instead of serving a half-applied database). No idempotency test is
+  added here: the seed script's upsert-based idempotency is already
+  proven by Phase 1's `backend/test/seed.test.ts` ("creates no
+  duplicates when run twice"), and `prisma migrate deploy`'s
+  idempotency is Prisma's own guarantee, not this project's code.
 
-**Manual check:** run the new start command twice in a row against a
-throwaway local database that already has the schema applied and seed
-data present; confirm the second run makes no changes (no duplicate
-rows, no errors) and the server still starts normally.
+**Manual check:** against `ctrm_dev` (already migrated/seeded via the
+normal dev workflow), from the repo root:
+```
+npm run build
+set NODE_ENV=production
+npm run start -w backend
+```
+Confirm it prints `CTRM backend listening on port 3002` with no
+errors, then stop it (Ctrl+C) and run `npm run start -w backend`
+again (`NODE_ENV` stays set in the same cmd window) — confirm the
+second run also applies cleanly (no pending migrations, no errors)
+and reseeds with no duplicate rows, and the server starts normally
+again. Open `http://localhost:3002` in a browser to confirm the app
+still loads.
 
 ---
 
@@ -1482,7 +1509,11 @@ through Render's dashboard to create each service.
   for staging, and set manually (`sync: false`) for production, since
   its logical database isn't the blueprint-managed one.
 - `buildCommand: npm ci && npm run build` (repo root); `startCommand`
-  is Phase 18's new wrapper script.
+  is Phase 18's new wrapper script. `npm ci` (plain, no `--omit=dev`)
+  is deliberate, not just the obvious default: Phase 18's wrapper
+  script runs `prisma` and `tsx` at start time, and both are
+  `devDependencies` — an install that omits dev dependencies would
+  build successfully but fail every boot at the migrate or seed step.
 
 **Files:**
 - `render.yaml` — new, at repo root.
