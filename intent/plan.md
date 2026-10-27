@@ -1393,9 +1393,16 @@ regardless of the host's working directory as long as the whole repo
 - With `NODE_ENV=production` and a built `frontend/dist` present,
   requesting `GET /` returns the built `index.html`; requesting a
   client-side route like `GET /trades/abc` also returns `index.html`
-  (SPA fallback); requesting `GET /api/unknown` still returns the
-  existing JSON 404, not the SPA fallback — proves the catch-all is
-  scoped to non-`/api` paths.
+  (SPA fallback); requesting a real static asset (e.g.
+  `GET /assets/app.js`) returns that file's own content, not
+  `index.html`; requesting `GET /api/unknown` is not hijacked by the
+  SPA fallback — it returns the same (non-JSON, Express-default) 404
+  this route already returned before this phase — proves the
+  catch-all is scoped to non-`/api` paths. A proper JSON 404 for
+  unmatched `/api/*` routes is a known gap, tracked separately, not
+  addressed in this phase.
+- With `NODE_ENV=production`, a real API route (`GET /api/health`)
+  still returns its normal JSON response, not static-file handling.
 - With `NODE_ENV` unset/`development`, the static middleware and
   fallback are not registered at all (existing dev behavior/tests
   unaffected).
