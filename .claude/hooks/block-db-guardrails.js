@@ -12,12 +12,22 @@ const BACKGROUNDING_RE =
 
 const RESET_RE = /\bprisma\s+migrate\s+reset\b|\bdb:test:reset\b/i;
 
+const PNPM_RE = /\bpnpm\b/i;
+
 function main() {
   const input = readHookInput();
   if (input.tool_name !== 'Bash' && input.tool_name !== 'PowerShell') return;
 
   const command = input.tool_input && input.tool_input.command;
   if (!command) return;
+
+  if (PNPM_RE.test(command)) {
+    deny(
+      `Blocked: "${command}" runs pnpm. This project uses npm only (package-lock.json) -- use the equivalent ` +
+        'npm command instead.',
+    );
+    return;
+  }
 
   if (STOP_REMOVE_RE.test(command)) {
     deny(
