@@ -25,6 +25,11 @@ function run(command, args) {
   }
 }
 
+console.log("[start] 1/3 migrate");
 run("prisma", ["migrate", "deploy"]);
+
+console.log("[start] 2/3 seed");
 run("tsx", ["prisma/seed.ts"]);
+
+console.log("[start] 3/3 server");
 run("node", ["dist/server.js"]);

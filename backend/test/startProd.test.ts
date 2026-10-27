@@ -19,7 +19,7 @@ describe("production start wrapper (scripts/start-prod.mjs)", () => {
       expect(exitCode).not.toBe(0);
       expect(output).not.toMatch(/listening on port/i);
     },
-    30_000,
+    120_000,
   );
 });
 

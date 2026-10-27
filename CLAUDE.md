@@ -87,6 +87,12 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
   once.
 - This project uses npm only (package-lock.json). Never run pnpm
   here, even though kr-prolines uses it.
+- The production start command (`backend/scripts/start-prod.mjs`,
+  see `intent/plan.md` Phase 18) runs `prisma` and `tsx` to migrate
+  and seed the database before starting the server. Both are
+  `devDependencies`, not `dependencies` — the deploy host's install
+  step must not omit dev dependencies (plain `npm ci`, never `npm ci
+  --omit=dev`), or the app builds fine but fails every boot.
 
 ## Verifying your work
 Run the tests, lint, AND typecheck (`npm test`, `npm run lint`,

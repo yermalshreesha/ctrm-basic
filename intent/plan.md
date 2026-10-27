@@ -1431,6 +1431,15 @@ seed script are idempotent, so running them on every boot (including
 every cold-start wake from sleep) is safe and needs no new "has this
 run before" state.
 
+**Important constraint:** `prisma` and `tsx`, which the wrapper's
+migrate and seed steps depend on, are `backend/package.json`
+`devDependencies`, not `dependencies` — unchanged from before this
+phase. The host's install step at deploy time must therefore install
+dev dependencies too (e.g. plain `npm ci`, never `npm ci --omit=dev`
+or an install run with an `NODE_ENV=production` that causes npm to
+skip them) or this wrapper fails at step 1 or 2 with a "command not
+found" error. See Phase 19's `buildCommand`.
+
 **Files:**
 - `backend/package.json` — new `start` script (or a
   `backend/scripts/start-prod.mjs` wrapper, consistent with the
@@ -1500,7 +1509,11 @@ through Render's dashboard to create each service.
   for staging, and set manually (`sync: false`) for production, since
   its logical database isn't the blueprint-managed one.
 - `buildCommand: npm ci && npm run build` (repo root); `startCommand`
-  is Phase 18's new wrapper script.
+  is Phase 18's new wrapper script. `npm ci` (plain, no `--omit=dev`)
+  is deliberate, not just the obvious default: Phase 18's wrapper
+  script runs `prisma` and `tsx` at start time, and both are
+  `devDependencies` — an install that omits dev dependencies would
+  build successfully but fail every boot at the migrate or seed step.
 
 **Files:**
 - `render.yaml` — new, at repo root.
