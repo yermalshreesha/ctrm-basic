@@ -91,7 +91,30 @@ none are implied by the intent and none are added.
    file — never a second, frontend-local copy — so the two settings
    can never drift apart and nobody edits `vite.config.ts` by hand to
    work around a clash. Production/deployment port configuration is out
-   of scope here (see change 004, deployment).
+   of scope here (see change 008, deployment, section 11).
+
+7. **Database hosting for staging/production demo deploys**: one free
+   Render Postgres instance, holding two logical databases
+   (`ctrm_staging`, `ctrm_production`), rather than two separate free
+   databases (Render's free tier allows only one Postgres database per
+   workspace) or a paid second instance. Decision recorded in
+   `intent/changes/008-deploy-demo.md`, detail in section 11. Both
+   environments share the same 30-day expiry clock and are recreated
+   together — accepted since both hold only demo data.
+
+8. **Demo data is never reset automatically.** Only the fixed reference
+   data (Commodity/Counterparty/Warehouse) auto-reseeds, idempotently,
+   on every deploy/boot. Trade/Shipment/Inventory data is left alone
+   indefinitely; an automatic or even a built-in manual reset mechanism
+   is out of scope for this version. Decision recorded in
+   `intent/changes/008-deploy-demo.md`.
+
+9. **Rollback is a single script, not a platform-specific dashboard
+   action.** `npm run rollback -- <sha>` reverts and re-pushes to
+   `main`, reusing the normal CI/deploy pipeline rather than Render's
+   dashboard rollback button, so the same path is exercised — and can
+   be practiced on staging — whether rolling forward or back. Decision
+   recorded in `intent/changes/008-deploy-demo.md`.
 
 ## 3. Areas of concern
 
@@ -417,6 +440,13 @@ Warehouse in this version; rows come from a seed script. See section
 - `GET /api/inventory` — current InventoryBalance rows, joined with warehouse/commodity names; excludes rows whose `quantityMt` is exactly zero (a warehouse+commodity pair drawn all the way down has no meaningful stock to show) — compared as a `Prisma.Decimal` value against the database column, in the backend, never as a string and never in the browser
 - `GET /api/inventory/movements` — ledger, filterable by `warehouseId`, `commodityId`; unaffected by the zero-balance exclusion above — every movement is listed regardless of the balance it left behind, since it's a historical fact, not a current-stock figure
 
+### Health
+- `GET /api/health` — returns 200 with `{ status: "ok", db: "connected" }`
+  when the database is reachable, 500 otherwise. Used locally and, once
+  deployed, as Render's `healthCheckPath` (section 11) — the contract
+  this endpoint keeps (200 only when genuinely healthy) is load-bearing
+  for every deploy, not just a developer convenience.
+
 ### Dashboard
 - `GET /api/dashboard/positions` — net position (bought − sold, in MT) per commodity, computed from CONFIRMED + COMPLETED trades; only commodities with at least one CONFIRMED or COMPLETED trade are listed (a commodity with none — no trades at all, or only DRAFT/CANCELLED ones — is omitted, not reported at zero)
 - `GET /api/dashboard/inventory-summary` — stock by warehouse (same data as /api/inventory, including the zero-balance exclusion above, shaped for the dashboard widget)
@@ -599,3 +629,79 @@ stock"**
   notes change request (`intent/changes/001-trade-notes.md`): Shipment
   has no `notes` field, and `Trade.notes` keeps no edit history — only
   the current value is stored, same as every other Trade field.
+
+## 11. Deployment
+
+Per `intent/changes/008-deploy-demo.md`: this app is deployed as a
+short-lived public demo (fake data only, no login — consistent with
+`intent/intent.md`'s "runs locally, no login," now made reachable
+online), not a production business system. Decisions (also recorded as
+section 2, decisions 7-9):
+
+- **Hosting:** Render, two web services (`ctrm-staging`,
+  `ctrm-production`), both defined in a committed `render.yaml`
+  Blueprint (infrastructure as code) rather than manual dashboard
+  setup.
+- **Database:** one free Render Postgres instance (Render's free tier
+  allows only one per workspace: 1 GB, expires 30 days after creation,
+  14-day grace period before deletion). It holds two logical databases,
+  `ctrm_staging` and `ctrm_production` — the same one-instance/two-
+  databases pattern already used locally for `ctrm_dev`/`ctrm_test`
+  (`docker-compose.yml`). Creating the second logical database is a
+  one-time manual step (not expressible in `render.yaml`, which only
+  wires one connection string per database resource). Both environments
+  share the same 30-day expiry clock and are recreated together;
+  accepted since both only ever hold demo data (decision 7).
+- **Serving:** the backend serves the built frontend (`frontend/dist`)
+  as static files in production, with an SPA fallback for client-side
+  routes, so there's no Vite dev proxy and no CORS middleware in
+  production — the frontend keeps calling relative `/api/...` paths,
+  unchanged from local dev. Active only when `NODE_ENV === "production"`;
+  local dev is unaffected.
+- **Migrations:** `prisma migrate deploy` (never `migrate reset`) runs
+  as part of the production start command, before the server starts
+  listening — not a separate Render "Pre-Deploy Command" or one-off
+  job, since Render's free tier offers neither. It's idempotent, so
+  running it on every boot (including every cold-start wake from sleep)
+  is safe.
+- **Seed:** `backend/prisma/seed.ts` (reference data only — Commodity,
+  Counterparty, Warehouse) also runs on every boot, immediately after
+  migrations. It's already upsert-based (phase 1 of the plan), so
+  repeated runs never duplicate rows.
+- **Demo data reset:** Trade/Shipment/Inventory data is never wiped
+  automatically — only the reference-data seed above runs on its own.
+  A reset mechanism of any kind (manual or scheduled) is out of scope
+  for this version (decision 8).
+- **Pipeline:** merging to `main` deploys `ctrm-staging` automatically
+  — Render's own `autoDeployTrigger: checksPass` waits for GitHub's CI
+  check to pass before deploying, so no separate GitHub Actions step
+  triggers staging. `ctrm-production` never auto-deploys; it's deployed
+  only by a GitHub Actions job gated on a `production` GitHub
+  Environment with a required human reviewer, which then calls the
+  production service's Render deploy hook.
+- **Smoke test:** both services set `healthCheckPath: /api/health` in
+  `render.yaml` (see section 7's Health endpoint) — Render itself won't
+  route traffic to a new deploy until that path responds with 200, so
+  every deploy (and every rollback) is gated on the existing health
+  check with no extra code.
+- **Rollback:** `npm run rollback -- <commit-sha>`, which runs `git
+  revert <sha> --no-edit && git push origin main` — this re-enters the
+  same pipeline as a normal change (CI, staging auto-deploy,
+  approval-gated production deploy) rather than a second,
+  separately-maintained mechanism. Practiced on staging before it's
+  ever needed on production (decision 9).
+- **Secrets:** `DATABASE_URL` for each environment lives only as a
+  Render environment variable (wired via `render.yaml`'s `fromDatabase`
+  where possible); the production deploy hook URL lives only as a
+  GitHub Actions secret scoped to the `production` Environment. Neither
+  is ever committed to the repo or placed in `.env.example`'s committed
+  defaults.
+- **Claude Code guardrail:** a fourth `PreToolUse` hook (alongside
+  `intent/changes/007-guardrail-hooks.md`'s three) blocks Claude from
+  directly calling the production deploy hook or from approving the
+  `production` Environment's pending-deployment gate — a human must
+  trigger and approve every production deploy.
+
+Out of scope for this version (per `intent/changes/008-deploy-demo.md`):
+login/user accounts, real business data, a custom domain, and Claude
+running inside the deploy pipeline itself.

@@ -1359,3 +1359,278 @@ Vitest; verified manually, same as Phase 12/13's "Tests: none planned."
   `fix/` branch).
 
 ---
+
+## Phase 17 — Change 008: Production build serves the built frontend
+
+**Goal:** the backend can serve the app as a single Node process — the
+built frontend (`frontend/dist`) plus the existing `/api/*` routes — so
+there's no Vite dev proxy, no CORS middleware, and nothing else needed
+to put one process behind a URL on a host like Render. Local dev
+(`npm run dev`, Vite + proxy) is completely unaffected.
+
+**Decision** (`intent/changes/008-deploy-demo.md`, recorded in
+spec.md §11): the backend serves static files only in production
+(`NODE_ENV === "production"`), never in dev — `backend/src/app.ts`
+gains, after every `/api/*` router and before the global error
+handler: `express.static(...)` pointed at `frontend/dist`, then a GET
+catch-all for any non-`/api` path that returns `frontend/dist/
+index.html` (so a hard refresh on a client-side route like
+`/trades/:id` resolves to the SPA, not a 404). Resolved relative to the
+compiled `backend/dist/server.js`'s own location, which works
+regardless of the host's working directory as long as the whole repo
+(not just `backend/`) is present at deploy time — true here, since
+`npm run build` at the repo root builds both workspaces in place.
+
+**Files:**
+- `backend/src/app.ts` — static-serving + SPA fallback, guarded by
+  `NODE_ENV`.
+- `intent/spec.md` — §11 "Deployment" (new section) and decisions 7-9.
+- `intent/changes/008-deploy-demo.md` — open questions resolved.
+
+**Business rules implemented:** none — deployment infrastructure only.
+
+**Tests:**
+- With `NODE_ENV=production` and a built `frontend/dist` present,
+  requesting `GET /` returns the built `index.html`; requesting a
+  client-side route like `GET /trades/abc` also returns `index.html`
+  (SPA fallback); requesting `GET /api/unknown` still returns the
+  existing JSON 404, not the SPA fallback — proves the catch-all is
+  scoped to non-`/api` paths.
+- With `NODE_ENV` unset/`development`, the static middleware and
+  fallback are not registered at all (existing dev behavior/tests
+  unaffected).
+
+**Manual check:** `npm run build`, then `NODE_ENV=production PORT=3002
+node backend/dist/server.js` from the repo root; open
+`http://localhost:3002` in a browser, confirm the app loads and
+client-side navigation plus a hard refresh on a detail page both work,
+with no Vite process running at all.
+
+---
+
+## Phase 18 — Change 008: Deploy-time migrations and idempotent seed
+
+**Goal:** every boot of the deployed app safely applies any pending
+database migrations and (re-)seeds fixed reference data, with no
+manual step and no risk of a reset — since Render's free tier has no
+"Pre-Deploy Command"/one-off-job mechanism to run these separately
+from the app's own start command.
+
+**Decision** (spec.md §11): the production start command becomes a
+short wrapper — `prisma migrate deploy` (never `migrate reset`), then
+`prisma/seed.ts`, then `node dist/server.js` — instead of just `node
+dist/server.js`. Both `migrate deploy` and the existing upsert-based
+seed script are idempotent, so running them on every boot (including
+every cold-start wake from sleep) is safe and needs no new "has this
+run before" state.
+
+**Files:**
+- `backend/package.json` — new `start` script (or a
+  `backend/scripts/start-prod.mjs` wrapper, consistent with the
+  existing `scripts/run-with-env.mjs` pattern) chaining migrate → seed
+  → server.
+- `backend/prisma/seed.ts` — confirm it still runs correctly from the
+  production environment (e.g. via `tsx` if that stays a runtime
+  dependency, or compiled alongside the rest of `src` by `tsc`) —
+  whichever needs the smaller change.
+- `intent/plan.md` — this phase.
+
+**Business rules implemented:** none — deployment infrastructure only.
+BR-9 (fixed reference data, no create/edit/delete API) is unaffected:
+the seed script still only upserts Commodity/Counterparty/Warehouse
+rows, never Trade/Shipment data.
+
+**Tests:** none planned — not business logic; Render's own deploy
+health check (Phase 19) and the manual check below are the
+verification, same as Phase 12/16's "Tests: none planned."
+
+**Manual check:** run the new start command twice in a row against a
+throwaway local database that already has the schema applied and seed
+data present; confirm the second run makes no changes (no duplicate
+rows, no errors) and the server still starts normally.
+
+---
+
+## Phase 19 — Change 008: Render blueprint (staging + production)
+
+**Goal:** define both hosted environments as code — one committed
+`render.yaml` Render reads directly, instead of manually clicking
+through Render's dashboard to create each service.
+
+**Decisions confirmed for this phase, recorded in spec.md §11:**
+- One free Render Postgres instance, holding two logical databases
+  (`ctrm_staging`, `ctrm_production`) — Render's free tier allows only
+  one Postgres database per workspace. Creating the second logical
+  database is a one-time manual step against the instance's connection
+  string (not expressible in `render.yaml`, which only wires one
+  connection string per database resource); documented here rather
+  than automated.
+- `ctrm-staging`: tracks `main`, `autoDeployTrigger: checksPass` (waits
+  for GitHub's CI check to go green before deploying — no GitHub
+  Actions step needed to trigger it).
+- `ctrm-production`: tracks `main`, `autoDeployTrigger: off` — it is
+  never deployed by a push; only by its deploy hook (Phase 21).
+- Both services set `healthCheckPath: /api/health` and
+  `NODE_ENV: production`; `DATABASE_URL` is wired via `fromDatabase`
+  for staging, and set manually (`sync: false`) for production, since
+  its logical database isn't the blueprint-managed one.
+- `buildCommand: npm ci && npm run build` (repo root); `startCommand`
+  is Phase 18's new wrapper script.
+
+**Files:**
+- `render.yaml` — new, at repo root.
+- `intent/spec.md` — §11, decision 7.
+- `intent/changes/008-deploy-demo.md` — "does the free tier allow two
+  databases?" open question resolved.
+
+**Business rules implemented:** none — deployment infrastructure only.
+
+**Tests:** none planned — infrastructure config, not app code; verified
+manually (below) and implicitly by every later phase's deploys
+succeeding.
+
+**Manual check:** connect the repo as a Render Blueprint; confirm both
+services and the one database are created as described; manually
+create the second logical database and point `ctrm-production`'s
+`DATABASE_URL` at it; trigger `ctrm-staging`'s first deploy (e.g. by
+pushing a trivial commit to `main` once CI is green) and confirm it
+goes live and `GET /api/health` returns 200 through Render's own URL.
+
+---
+
+## Phase 20 — Change 008: Guardrail hook blocking Claude from deploying to production
+
+**Goal:** stop a Claude Code session from being able to trigger or
+approve a production deploy by itself — a human must always be the one
+who triggers the deploy hook and approves the GitHub Environment gate —
+using the same `PreToolUse`-hook mechanism
+`intent/changes/007-guardrail-hooks.md` already established for the
+three existing guardrails (Phase 16). Comes before Phase 21 (the
+approval-gated production deploy workflow) so the gate exists before
+anything can deploy to production.
+
+**Decision, hook mechanics** (reuses Phase 16's shared helper and
+style):
+- **Event/matcher:** `PreToolUse`, matcher `Bash|PowerShell`.
+- **Checks (deny):**
+  1. The command is an HTTP call (`curl`, `Invoke-WebRequest`,
+     `Invoke-RestMethod`, `wget`, ...) whose target matches Render's
+     deploy-hook URL shape (`api.render.com/deploy/srv-...`) — in this
+     design, only the production service has a deploy hook at all
+     (staging deploys natively via Render's own `checksPass` trigger,
+     Phase 19), so this rule has no legitimate match to accidentally
+     block.
+  2. The command calls the GitHub API's pending-deployment-review
+     endpoint (`gh api .../pending_deployments`, or an equivalent raw
+     `curl`/`Invoke-RestMethod` to `api.github.com`) with an approval
+     state — this is how the `production` Environment's required-
+     reviewer gate (Phase 21) could otherwise be self-approved from the
+     command line.
+- **Message Claude sees:** explains that production deploys and their
+  approval are reserved for a human, and that the normal way to ship a
+  change is still to merge to `main` and let the existing pipeline (and
+  reviewer) handle it.
+
+**Files:**
+- `.claude/settings.json` — register the new hook.
+- `.claude/hooks/block-production-deploy.js` — new, reusing
+  `.claude/hooks/lib/hookUtil.js` from Phase 16.
+- `CLAUDE.md` — note alongside the existing three guardrail hooks.
+- `intent/spec.md` — §11.
+
+**intent/spec.md:** §11 only — same reasoning as Phase 16: this
+constrains how a Claude Code session behaves in this repo, not the
+application itself.
+
+**Business rules implemented:** none — tooling/process only.
+
+**Tests:** none planned — hooks aren't app code; verified manually,
+same as Phase 16.
+
+**Manual check:** ask Claude to run a `curl`/`Invoke-RestMethod`
+against the production deploy hook URL and confirm it's denied; ask it
+to call the GitHub pending-deployments API with an approval state and
+confirm that's denied too; confirm a normal `git push origin main` (the
+actual way to ship) is unaffected.
+
+---
+
+## Phase 21 — Change 008: Approval-gated production deploy
+
+**Goal:** production deploys only after a human approves them in
+GitHub, by routing every production deploy through a GitHub Actions job
+gated on a `production` Environment with a required reviewer. Comes
+after Phase 20, so the guardrail hook blocking Claude from triggering
+or approving this gate is already in place before this phase makes a
+real production deploy possible.
+
+**Decisions confirmed for this phase, recorded in spec.md §11:**
+- A `production` GitHub Environment, with at least one required
+  reviewer, created once via the repo's Settings → Environments UI —
+  GitHub doesn't support defining environment protection rules in a
+  committed workflow file, so this one setup step stays manual and is
+  documented rather than automated.
+- New workflow, triggered on push to `main` after the existing CI
+  workflow succeeds (`workflow_run`), with a single job:
+  `environment: production` (so the job itself pauses for approval),
+  then a step that POSTs to the production deploy hook
+  (`${{ secrets.RENDER_PRODUCTION_DEPLOY_HOOK }}`, stored as a secret
+  scoped to the `production` Environment, never a repo-wide secret).
+- An optional follow-up step polls `GET /api/health` on the production
+  URL (with a timeout/backoff) purely so the workflow run itself shows
+  pass/fail — the actual gating smoke test is still Render's
+  `healthCheckPath` from Phase 19, which runs regardless of whether
+  this step exists.
+
+**Files:**
+- `.github/workflows/deploy-production.yml` — new.
+- `intent/spec.md` — §11.
+- `intent/changes/008-deploy-demo.md` — pipeline details recorded.
+- (Manual, not a file) repo Settings → Environments → `production`,
+  with a required reviewer.
+
+**Business rules implemented:** none — deployment infrastructure only.
+
+**Tests:** none planned — not exercised by Vitest; verified manually,
+same as Phase 16.
+
+**Manual check:** merge a trivial change to `main`; confirm
+`ctrm-staging` deploys automatically with no approval step; confirm the
+new workflow's production job pauses waiting for review; approve it as
+the configured reviewer and confirm the production deploy hook fires
+and `ctrm-production` goes live; reject/don't approve a second time and
+confirm production is untouched.
+
+---
+
+## Phase 22 — Change 008: Rollback script, practiced on staging
+
+**Goal:** a single command to roll back a bad deploy, exercised against
+staging before it's ever needed against production.
+
+**Decision** (spec.md §11, decision 9): rollback re-enters the normal
+pipeline rather than a separate platform-specific mechanism — `npm run
+rollback -- <commit-sha>` runs `git revert <sha> --no-edit && git push
+origin main`. For staging this immediately triggers Phase 19's
+`checksPass` auto-deploy once CI passes on the revert commit; for
+production it still requires the Phase 21 approval step, same as any
+other change — rollback isn't a way around that gate.
+
+**Files:**
+- `package.json` (root) — new `rollback` script.
+- `intent/spec.md` — §11, decision 9.
+- `intent/changes/008-deploy-demo.md` — rollback approach recorded;
+  `Status` → `done` once this phase (the last of the change) is
+  implemented and verified — this closes out the change.
+
+**Business rules implemented:** none — deployment infrastructure only.
+
+**Tests:** none planned — a thin wrapper around `git revert`/`git
+push`, verified manually.
+
+**Manual check:** push a trivial, clearly-identifiable change to
+`main`, let it deploy to staging, then run `npm run rollback -- <that
+commit's sha>` and confirm a revert commit is created and pushed, CI
+runs on it, and staging redeploys back to the prior behavior.
+
+---
