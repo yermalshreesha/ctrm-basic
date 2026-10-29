@@ -1508,12 +1508,23 @@ through Render's dashboard to create each service.
   `NODE_ENV: production`; `DATABASE_URL` is wired via `fromDatabase`
   for staging, and set manually (`sync: false`) for production, since
   its logical database isn't the blueprint-managed one.
-- `buildCommand: npm ci && npm run build` (repo root); `startCommand`
-  is Phase 18's new wrapper script. `npm ci` (plain, no `--omit=dev`)
-  is deliberate, not just the obvious default: Phase 18's wrapper
-  script runs `prisma` and `tsx` at start time, and both are
-  `devDependencies` — an install that omits dev dependencies would
-  build successfully but fail every boot at the migrate or seed step.
+- `buildCommand: npm ci --include=dev && npm run db:generate && npm
+  run build` (repo root); `startCommand` is Phase 18's new wrapper
+  script. Two things make this longer than the obvious `npm ci && npm
+  run build`:
+  - `--include=dev` is required because Render sets `NODE_ENV=production`
+    for the build step (this blueprint's own `NODE_ENV: production`
+    env var, below), and a plain `npm ci` under `NODE_ENV=production`
+    silently skips `devDependencies` — which is where `prisma` and
+    `tsx` live, since Phase 18's wrapper script runs them at start
+    time. Without `--include=dev` the build succeeds but every boot
+    fails at the migrate or seed step with a "command not found"
+    error.
+  - `npm run db:generate` is required because a clean `npm ci` does
+    not run Prisma's `postinstall` generation the way a local `npm
+    install` typically has already done in a dev environment — so the
+    Prisma Client module Phase 18's wrapper and the server import
+    would otherwise not exist yet on a fresh Render build.
 
 **Files:**
 - `render.yaml` — new, at repo root.

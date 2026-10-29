@@ -20,7 +20,7 @@ services:
     plan: free
     branch: main
     autoDeployTrigger: checksPass
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run db:generate && npm run build
     startCommand: npm run start -w backend
     healthCheckPath: /api/health
     envVars:
@@ -37,7 +37,7 @@ services:
     plan: free
     branch: main
     autoDeployTrigger: off
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run db:generate && npm run build
     startCommand: npm run start -w backend
     healthCheckPath: /api/health
     envVars:
