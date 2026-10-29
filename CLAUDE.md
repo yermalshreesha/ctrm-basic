@@ -69,6 +69,22 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
   `test/setup.ts` are locked too, not just `*.test.ts` files. See
   `intent/changes/007-guardrail-hooks.md` and `intent/plan.md` Phase
   16 for why.
+- A fourth hook (`block-production-deploy.js`) blocks a session from
+  triggering or approving a production deploy: calling the production
+  Render deploy-hook URL, approving/rejecting a GitHub Environment
+  pending-deployment review, or using Render's CLI/API to deploy or
+  roll back `ctrm-production` directly. A Render CLI/API deploy-or-
+  rollback call that doesn't clearly name `ctrm-production` pauses for
+  approval instead of being blocked outright, since it might target
+  staging or reference a raw service ID the hook can't resolve. Like
+  the other regex-based hooks, it matches on command text, so it can
+  be evaded by splitting a URL or string across shell variables before
+  concatenating it (the same limitation the `pnpm` check has) -- this
+  hook is a second layer, not the only one: the production deploy
+  hook URL itself is never committed anywhere, only held as a GitHub
+  Actions secret scoped to the `production` Environment (spec.md
+  §11). See `intent/changes/008-deploy-demo.md` and `intent/plan.md`
+  Phase 20.
 
 ## Environment
 - The developer is on Windows and uses Command Prompt (cmd).

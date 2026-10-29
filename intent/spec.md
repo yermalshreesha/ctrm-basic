@@ -698,9 +698,14 @@ section 2, decisions 7-9):
   defaults.
 - **Claude Code guardrail:** a fourth `PreToolUse` hook (alongside
   `intent/changes/007-guardrail-hooks.md`'s three) blocks Claude from
-  directly calling the production deploy hook or from approving the
-  `production` Environment's pending-deployment gate — a human must
-  trigger and approve every production deploy.
+  directly calling the production deploy hook, from approving the
+  `production` Environment's pending-deployment gate, or from using
+  Render's CLI/API to deploy or roll back `ctrm-production` directly
+  (the same action via a different surface) — a human must trigger
+  and approve every production deploy. A Render CLI/API deploy-or-
+  rollback call naming some other or unspecified service pauses for
+  approval instead of being blocked outright, since the hook has no
+  way to resolve a raw service ID to a service name.
 
 Out of scope for this version (per `intent/changes/008-deploy-demo.md`):
 login/user accounts, real business data, a custom domain, and Claude

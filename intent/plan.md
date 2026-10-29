@@ -1597,6 +1597,15 @@ style):
      state — this is how the `production` Environment's required-
      reviewer gate (Phase 21) could otherwise be self-approved from the
      command line.
+  3. The command is Render's CLI (`render deploy`/`render rollback`)
+     or its authenticated management API
+     (`api.render.com/v1/services/.../deploys` or `.../rollback`) —
+     a second surface, besides the public deploy hook, that can deploy
+     or roll back a service directly. Denied when it names
+     `ctrm-production`; a call that doesn't clearly name a service
+     (e.g. a raw service ID the hook can't resolve) asks for approval
+     instead of being denied outright, since it might legitimately
+     target staging.
 - **Message Claude sees:** explains that production deploys and their
   approval are reserved for a human, and that the normal way to ship a
   change is still to merge to `main` and let the existing pipeline (and
@@ -1621,8 +1630,11 @@ same as Phase 16.
 **Manual check:** ask Claude to run a `curl`/`Invoke-RestMethod`
 against the production deploy hook URL and confirm it's denied; ask it
 to call the GitHub pending-deployments API with an approval state and
-confirm that's denied too; confirm a normal `git push origin main` (the
-actual way to ship) is unaffected.
+confirm that's denied too; ask it to run a Render CLI or API
+deploy/rollback command naming `ctrm-production` and confirm it's
+denied, then the same command naming `ctrm-staging` (or no service
+name at all) and confirm it only asks for approval; confirm a normal
+`git push origin main` (the actual way to ship) is unaffected.
 
 ---
 
@@ -1686,6 +1698,15 @@ origin main`. For staging this immediately triggers Phase 19's
 `checksPass` auto-deploy once CI passes on the revert commit; for
 production it still requires the Phase 21 approval step, same as any
 other change — rollback isn't a way around that gate.
+
+**Known gap, flagged during Phase 20, not fixed here:** `git push
+origin main` directly, as this design assumes, is blocked by this
+repo's GitHub branch protection on `main` (no direct pushes — only
+merged PRs). This phase's design needs to change before it's
+implemented — e.g. `npm run rollback` opens a revert pull request
+instead of pushing straight to `main`, or rollback uses Render's own
+rollback mechanism instead of re-entering the git pipeline at all.
+Not resolved now; resolve it when this phase is actually implemented.
 
 **Files:**
 - `package.json` (root) — new `rollback` script.
