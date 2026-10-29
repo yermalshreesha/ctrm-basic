@@ -1684,6 +1684,52 @@ the configured reviewer and confirm the production deploy hook fires
 and `ctrm-production` goes live; reject/don't approve a second time and
 confirm production is untouched.
 
+**Implementation notes (decided during Phase 21, not departures from
+the plan's intent, but resolving ambiguity in the wording above):**
+- **`/api/health` now reports the running commit**, not just DB
+  connectivity: `{ status, db, commit }`, where `commit` is Render's own
+  `RENDER_GIT_COMMIT` environment variable (the SHA of the commit
+  Render built and deployed) when present, or `"unknown"` locally,
+  where no such variable exists. Covered by `backend/test/health.test.ts`
+  (one case per branch). Recorded in spec.md §7.
+- **The production workflow's smoke-test step is a required gate, not
+  optional visibility**, and it checks more than "200 OK": after
+  calling the deploy hook it polls `/api/health` for up to 15 minutes,
+  comparing `commit` against the approved run's `head_sha`, and fails
+  the workflow if that never matches. Render's `healthCheckPath` is
+  still what actually gates traffic to the new deploy; this step gates
+  whether the *GitHub Actions run itself* reports success, and catches
+  the case where Render's health check passes (DB reachable) before the
+  new code is actually what's serving requests.
+- **Guarding against a newer commit landing while a run waits for
+  approval:** Render's deploy hook has no way to target a specific,
+  older commit — it always deploys whatever is currently the tip of
+  `main`. Two mitigations, not a true pin: a `concurrency` group
+  (`production-deploy`, `cancel-in-progress: true`) cancels an older
+  pending-approval run as soon as a newer commit's CI finishes, so
+  normally only one run is ever approvable, and it's always current
+  `main`; and a guard step re-reads `main`'s tip via the GitHub API
+  immediately before calling the hook, failing the job rather than
+  deploying if it no longer matches the approved SHA (a race the
+  concurrency cancellation alone might not catch in time). This is a
+  limitation of Render's deploy hook, not something the workflow works
+  around by deploying an older commit on purpose.
+- **Production URL is a GitHub Environment *variable*
+  (`vars.PRODUCTION_URL`), not hardcoded and not a secret** — it's not
+  sensitive, but it does need to be set once the real Render URL (which
+  may carry a suffix if `ctrm-production` was taken) is known.
+- **Scope correction:** the Phase 20 guardrail hook only watches
+  commands *Claude* runs — it has no effect on a human manually
+  deploying or rolling back from Render's own dashboard. It was never
+  meant to, and the hook's own messaging already says "ask the user to
+  run it themselves" rather than implying manual dashboard actions are
+  blocked.
+- **"Prevent self-review"** is left **off** on the `production`
+  environment's protection rules for now, since there's a single
+  maintainer — turning it on would make every approval impossible
+  (the person who merges is also the only reviewer). Revisit if a
+  second maintainer joins.
+
 ---
 
 ## Phase 22 — Change 008: Rollback script, practiced on staging
