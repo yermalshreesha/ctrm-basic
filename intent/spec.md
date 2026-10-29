@@ -722,6 +722,32 @@ section 2, decisions 7-9):
   rollback call naming some other or unspecified service pauses for
   approval instead of being blocked outright, since the hook has no
   way to resolve a raw service ID to a service name.
+- **Repository visibility:** the GitHub repo was made public, because
+  GitHub's required-reviewers feature for Environments is not
+  available on private repos under the free plan — a required
+  reviewer on `production` (above) needs it. Trade-offs accepted: the
+  code and commit history are publicly visible; secrets themselves
+  stay out of the repo regardless (held in Render and in GitHub
+  Actions secrets, never committed); and GitHub requires approval to
+  run workflows on pull requests from first-time external
+  contributors to a public repo (fork PR workflows don't run
+  unattended).
+- **`production` Environment configuration:** requires at least one
+  reviewer (decision above), restricted to deploy only from the
+  `main` branch, and holds two pieces of configuration scoped to it —
+  the Render production deploy hook URL as a secret
+  (`RENDER_PRODUCTION_DEPLOY_HOOK`) and the production URL as a
+  variable (`PRODUCTION_URL`, used by the workflow's smoke-test
+  step).
+- **Incident:** the first production deploy ran without pausing for
+  approval, because the `production` Environment's required-reviewer
+  rule had not actually been saved yet when the workflow merged to
+  `main`. It failed closed rather than shipping anything, only because
+  `RENDER_PRODUCTION_DEPLOY_HOOK` also hadn't been set yet, so the
+  deploy step had no URL to call. Lesson: create and confirm the
+  protected Environment (reviewer rule, branch restriction, secrets)
+  *before* merging a workflow that depends on it, not after — don't
+  rely on a missing secret as a safety net.
 
 Out of scope for this version (per `intent/changes/008-deploy-demo.md`):
 login/user accounts, real business data, a custom domain, and Claude
