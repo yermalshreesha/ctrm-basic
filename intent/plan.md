@@ -1729,6 +1729,22 @@ the plan's intent, but resolving ambiguity in the wording above):**
   maintainer — turning it on would make every approval impossible
   (the person who merges is also the only reviewer). Revisit if a
   second maintainer joins.
+- **Repository made public:** GitHub's required-reviewers feature for
+  Environments isn't available on private repos under the free plan,
+  so the repo was switched to public to use it. Trade-offs: code and
+  history are now publicly visible; secrets are unaffected (they were
+  never in the repo); fork pull requests from first-time external
+  contributors now require maintainer approval before their workflow
+  runs. Recorded in spec.md §11.
+- **Incident during rollout:** the first production deploy ran without
+  pausing for approval, because the `production` Environment's
+  required-reviewer rule hadn't been saved yet when the workflow was
+  merged. It failed closed only because
+  `RENDER_PRODUCTION_DEPLOY_HOOK` also wasn't set yet — the deploy
+  step had nothing to call. Lesson for future phases: finish setting
+  up a protected Environment (reviewer, branch restriction, secrets)
+  *before* merging a workflow that relies on it. Recorded in
+  spec.md §11.
 
 ---
 
