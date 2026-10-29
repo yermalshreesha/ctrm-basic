@@ -18,7 +18,11 @@ app.use(express.json());
 app.get("/api/health", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.status(200).json({ status: "ok", db: "connected" });
+    res.status(200).json({
+      status: "ok",
+      db: "connected",
+      commit: process.env.RENDER_GIT_COMMIT ?? "unknown",
+    });
   } catch {
     res.status(500).json({ status: "error", db: "disconnected" });
   }

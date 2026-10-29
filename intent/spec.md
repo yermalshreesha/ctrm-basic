@@ -441,11 +441,16 @@ Warehouse in this version; rows come from a seed script. See section
 - `GET /api/inventory/movements` — ledger, filterable by `warehouseId`, `commodityId`; unaffected by the zero-balance exclusion above — every movement is listed regardless of the balance it left behind, since it's a historical fact, not a current-stock figure
 
 ### Health
-- `GET /api/health` — returns 200 with `{ status: "ok", db: "connected" }`
-  when the database is reachable, 500 otherwise. Used locally and, once
-  deployed, as Render's `healthCheckPath` (section 11) — the contract
-  this endpoint keeps (200 only when genuinely healthy) is load-bearing
-  for every deploy, not just a developer convenience.
+- `GET /api/health` — returns 200 with `{ status: "ok", db: "connected",
+  commit }` when the database is reachable, 500 otherwise (no `commit`
+  field in the error body). `commit` is Render's `RENDER_GIT_COMMIT`
+  environment variable (the deployed commit's SHA) when present, or
+  `"unknown"` when running locally. Used locally and, once deployed, as
+  Render's `healthCheckPath` (section 11) — the contract this endpoint
+  keeps (200 only when genuinely healthy) is load-bearing for every
+  deploy, not just a developer convenience. The production deploy
+  workflow (section 11) also polls this field to confirm the approved
+  commit is actually the one serving traffic before it reports success.
 
 ### Dashboard
 - `GET /api/dashboard/positions` — net position (bought − sold, in MT) per commodity, computed from CONFIRMED + COMPLETED trades; only commodities with at least one CONFIRMED or COMPLETED trade are listed (a commodity with none — no trades at all, or only DRAFT/CANCELLED ones — is omitted, not reported at zero)
@@ -676,14 +681,25 @@ section 2, decisions 7-9):
   — Render's own `autoDeployTrigger: checksPass` waits for GitHub's CI
   check to pass before deploying, so no separate GitHub Actions step
   triggers staging. `ctrm-production` never auto-deploys; it's deployed
-  only by a GitHub Actions job gated on a `production` GitHub
-  Environment with a required human reviewer, which then calls the
-  production service's Render deploy hook.
+  only by a GitHub Actions job (`.github/workflows/deploy-production.yml`)
+  gated on a `production` GitHub Environment with a required human
+  reviewer, which then calls the production service's Render deploy
+  hook. Render's deploy hook always deploys whatever is currently the
+  tip of `main` — it has no way to target an older, specific commit —
+  so the workflow cancels a still-pending approval run the moment a
+  newer commit's CI finishes (a `concurrency` group), and double-checks
+  immediately before calling the hook that `main` hasn't moved since the
+  run was queued, failing instead of deploying if it has.
 - **Smoke test:** both services set `healthCheckPath: /api/health` in
   `render.yaml` (see section 7's Health endpoint) — Render itself won't
   route traffic to a new deploy until that path responds with 200, so
   every deploy (and every rollback) is gated on the existing health
-  check with no extra code.
+  check with no extra code. The production deploy workflow adds a
+  stronger check on top of that: after calling the deploy hook, it polls
+  `/api/health` for up to 15 minutes until the `commit` field matches the
+  approved commit's SHA, failing the workflow run if it never does — this
+  also covers a sleeping free-tier service taking close to a minute to
+  wake and serve the new version.
 - **Rollback:** `npm run rollback -- <commit-sha>`, which runs `git
   revert <sha> --no-edit && git push origin main` — this re-enters the
   same pipeline as a normal change (CI, staging auto-deploy,

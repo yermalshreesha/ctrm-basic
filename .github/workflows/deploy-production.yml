@@ -1,0 +1,75 @@
+name: Deploy production
+
+# Runs after the CI workflow finishes on main -- never for a CI run
+# triggered by a pull request, since workflow_run's branches filter only
+# matches CI runs associated with main itself.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+# Cancels an older run still waiting for environment approval the moment a
+# newer commit's CI finishes, so there is only ever one approvable run and
+# it is always the latest commit on main.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+# Read-only: this job only reads the current tip of main (via the GitHub
+# API) and calls an external webhook -- it never pushes, comments, or
+# writes anything back to the repo. The environment approval gate itself
+# is enforced by GitHub regardless of this permissions block.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      APPROVED_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # Render's deploy hook always deploys whatever is currently the tip
+      # of main -- it has no way to target an older, specific commit. The
+      # concurrency group above already cancels a stale pending run when a
+      # newer commit's CI finishes; this is the second line of defense,
+      # catching the race where a newer commit lands after cancellation
+      # would have applied but before this step runs.
+      - name: Refuse to deploy if main has moved since this run was queued
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CURRENT_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
+          echo "Approved commit: $APPROVED_SHA"
+          echo "Current main:    $CURRENT_SHA"
+          if [ "$CURRENT_SHA" != "$APPROVED_SHA" ]; then
+            echo "::error::main has moved to $CURRENT_SHA since this run's commit was queued for approval. Deploying now would ship the wrong commit. Do not approve this run -- approve the newer pending run for $CURRENT_SHA instead."
+            exit 1
+          fi
+
+      - name: Trigger production deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_PRODUCTION_DEPLOY_HOOK }}"
+
+      # The real traffic gate is Render's own healthCheckPath (render.yaml).
+      # This step is a stronger visibility check on top: it doesn't just
+      # wait for 200 OK, it waits for /api/health to report the exact
+      # commit that was approved, so a slow rollout (or a free-tier service
+      # waking from sleep) can't be mistaken for success before the new
+      # code is actually serving traffic.
+      - name: Wait for production to report the approved commit
+        run: |
+          deadline=$((SECONDS + 900))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            body=$(curl -fsS "${{ vars.PRODUCTION_URL }}/api/health" || true)
+            commit=$(echo "$body" | jq -r '.commit // empty' 2>/dev/null || true)
+            if [ "$commit" = "$APPROVED_SHA" ]; then
+              echo "Production is healthy and running the approved commit ($commit)."
+              exit 0
+            fi
+            echo "Not there yet (saw commit '${commit:-none}'), retrying in 15s..."
+            sleep 15
+          done
+          echo "::error::Production never reported commit $APPROVED_SHA within 15 minutes."
+          exit 1
