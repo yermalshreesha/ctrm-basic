@@ -60,9 +60,16 @@ Design covered in full in `intent/spec.md` section 11 (and decisions
 - **Production deploy/approval:** a GitHub Actions job gated on a
   `production` Environment (required reviewer, set up once in GitHub's
   UI) calls the production service's Render deploy hook.
-- **Rollback:** `npm run rollback -- <sha>` (`git revert` + push),
-  re-entering the normal pipeline rather than a platform-specific
-  mechanism.
+- **Rollback:** two paths — an emergency Render-dashboard rollback done
+  by a person (fast, but doesn't touch `main`: the bad commit comes
+  back on the next deploy), and `npm run rollback -- <sha>`
+  (`scripts/rollback.mjs`), the proper fix, which opens a pull request
+  reverting `<sha>` into `main` rather than pushing to `main` directly
+  (blocked by branch protection) — re-entering the normal pipeline once
+  merged. Full detail and the staging-rehearsal plan are in
+  `intent/plan.md` Phase 22. Migrations must be additive
+  (expand/contract), since neither rollback path undoes an already-
+  applied migration.
 - **Smoke test:** Render's `healthCheckPath: /api/health`, gating every
   deploy and rollback natively — no custom polling code required for
   this to work, though Phase 20 adds an optional visibility poll in the
