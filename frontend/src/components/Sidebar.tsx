@@ -11,7 +11,7 @@ const links = [
 export function Sidebar() {
   return (
     <nav className="sidebar">
-      <div className="sidebar-title">CTRM (rehearsal)</div>
+      <div className="sidebar-title">CTRM</div>
       <ul>
         {links.map((link) => (
           <li key={link.to}>
