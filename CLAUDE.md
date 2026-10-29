@@ -93,6 +93,14 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
   `devDependencies`, not `dependencies` — the deploy host's install
   step must not omit dev dependencies (plain `npm ci`, never `npm ci
   --omit=dev`), or the app builds fine but fails every boot.
+- `render.yaml`'s `buildCommand` (`intent/plan.md` Phase 19) is `npm
+  ci --include=dev && npm run db:generate && npm run build`, not the
+  simpler `npm ci && npm run build`, for two reasons: (1) Render sets
+  `NODE_ENV=production` for the build, and under that env a plain
+  `npm ci` skips `devDependencies` regardless — `--include=dev`
+  overrides that; (2) a clean `npm ci` does not generate the Prisma
+  client, so `db:generate` must run explicitly before `build`/start.
+  Skipping either makes the build succeed but every boot fail.
 
 ## Verifying your work
 Run the tests, lint, AND typecheck (`npm test`, `npm run lint`,
