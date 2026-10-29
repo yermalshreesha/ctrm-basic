@@ -205,9 +205,17 @@ export function run(argv) {
     }
   }
 
-  if (!dryRun) {
-    runMutating(`switch back to ${originalBranch}`, "git", ["switch", originalBranch], false);
-  }
+  // The local revert branch isn't needed anymore -- it stays on origin for
+  // the PR. Switch back to wherever this was run from, then delete it
+  // locally so it doesn't linger; -D (not -d) because it's merged into the
+  // PR on GitHub, not into any local branch, so a plain -d would refuse.
+  runMutating(`switch back to ${originalBranch}`, "git", ["switch", originalBranch], dryRun);
+  runMutating(
+    `delete local branch ${branch} (it stays on origin for the pull request)`,
+    "git",
+    ["branch", "-D", branch],
+    dryRun,
+  );
 
   console.log(dryRun ? "[rollback] dry run complete -- no git/gh commands were executed." : "[rollback] done.");
 }

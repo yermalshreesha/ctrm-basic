@@ -1829,9 +1829,15 @@ pushes to `main` directly**:
    missing or not logged in (`gh auth status` fails), the branch is
    still pushed and the script prints the GitHub compare URL to open
    the pull request by hand instead of failing.
-7. A `--dry-run` flag prints every git/`gh` command it would run,
-   without running any of them — used both to preview a real rollback
-   and by this phase's own tests.
+7. Switches back to whichever branch the operator started on, then
+   deletes the local `revert-<short-sha>` branch (`git branch -D`, not
+   `-d`, since it's merged into the pull request on GitHub, not into
+   any local branch) — it stays on `origin` for the PR; only the local
+   copy is cleaned up.
+8. A `--dry-run` flag prints every git/`gh` command it would run,
+   including the switch-back and branch-delete above, without running
+   any of them — used both to preview a real rollback and by this
+   phase's own tests.
 
 Once merged, this re-enters the normal pipeline exactly like any other
 change: CI, `ctrm-staging`'s `checksPass` auto-deploy, and — for

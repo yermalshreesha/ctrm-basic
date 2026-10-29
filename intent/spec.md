@@ -736,10 +736,13 @@ section 2, decisions 7-9):
     on it (`-m 1` for a merge commit), pushes that branch (never
     `main`), and opens a pull request with `gh` (falling back to
     printing the compare URL if `gh` is unavailable or logged out).
-    Merging the PR re-enters the same pipeline as a normal change (CI,
-    staging auto-deploy, approval-gated production deploy) rather than
-    a second, separately-maintained mechanism. A `--dry-run` flag
-    previews every command without running it.
+    Afterwards it switches back to the branch the operator started on
+    and deletes the local `revert-<short-sha>` branch (it stays on
+    `origin` for the pull request). Merging the PR re-enters the same
+    pipeline as a normal change (CI, staging auto-deploy, approval-
+    gated production deploy) rather than a second, separately-
+    maintained mechanism. A `--dry-run` flag previews every command,
+    including the cleanup, without running any of it.
   Neither path undoes a database migration the bad deploy already
   applied — see the Migrations bullet above and decision 9.
 - **Secrets:** `DATABASE_URL` for each environment lives only as a

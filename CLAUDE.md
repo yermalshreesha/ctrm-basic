@@ -41,6 +41,10 @@ Run all of these from the repo root (npm workspaces).
 - Reset test database (drops/recreates against `ctrm_test`; use only
   if the test database is broken, e.g. out of sync in a way
   `db:test:migrate` can't fix): `npm run db:test:reset`
+- Roll back a bad commit on `main` (opens a PR reverting it, never
+  pushes to `main` directly — see `intent/plan.md` Phase 22): `npm run
+  rollback -- <sha>` (add `--dry-run` to preview without running
+  anything)
 
 Requires Docker Desktop running and the database up (`npm run db:up`)
 before `npm test`, `npm run dev -w backend`, or any `db:*` command.
