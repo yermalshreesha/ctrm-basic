@@ -15,6 +15,10 @@ Run three passes and tag each finding with its pass:
 - Each test asserts what its name claims and would fail if the
   behavior broke
 - Migrations are new files, never edits; nothing deletes data
+- Migrations must be additive: never drop or rename something old code
+  still uses in the same release (rollback can't undo a migration, so
+  a non-additive one breaks the reverted code — see intent/plan.md
+  Phase 22)
 - plan.md and spec.md are updated if the change departs from them
 - CLAUDE.md is still accurate after this change
 - List every existing test that was modified or deleted, and check

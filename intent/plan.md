@@ -1748,43 +1748,176 @@ the plan's intent, but resolving ambiguity in the wording above):**
 
 ---
 
-## Phase 22 — Change 008: Rollback script, practiced on staging
+## Phase 22 — Change 008: Rollback, redesigned around branch protection
 
-**Goal:** a single command to roll back a bad deploy, exercised against
-staging before it's ever needed against production.
+**Goal:** a reliable way to roll back a bad deploy, in two paths — a
+fast emergency path for an incident in progress, and a proper-fix path
+that actually removes the bad commit from `main` — both documented and
+rehearsed on staging before either is ever needed on production.
 
-**Decision** (spec.md §11, decision 9): rollback re-enters the normal
-pipeline rather than a separate platform-specific mechanism — `npm run
-rollback -- <commit-sha>` runs `git revert <sha> --no-edit && git push
-origin main`. For staging this immediately triggers Phase 19's
-`checksPass` auto-deploy once CI passes on the revert commit; for
-production it still requires the Phase 21 approval step, same as any
-other change — rollback isn't a way around that gate.
+**Redesign, and why:** the design originally recorded here had `npm run
+rollback` run `git revert <sha> --no-edit && git push origin main`
+directly. That's blocked by this repo's GitHub branch protection on
+`main` (no direct pushes — merged PRs only), flagged as a known gap
+during Phase 20 and left unresolved until now. The approved redesign
+below replaces it with two explicit paths instead of one script, since
+"roll back now" (an incident) and "remove the bad commit properly" (a
+process) have different urgency and different correctness
+requirements, and conflating them was what led to the direct-push
+design in the first place.
 
-**Known gap, flagged during Phase 20, not fixed here:** `git push
-origin main` directly, as this design assumes, is blocked by this
-repo's GitHub branch protection on `main` (no direct pushes — only
-merged PRs). This phase's design needs to change before it's
-implemented — e.g. `npm run rollback` opens a revert pull request
-instead of pushing straight to `main`, or rollback uses Render's own
-rollback mechanism instead of re-entering the git pipeline at all.
-Not resolved now; resolve it when this phase is actually implemented.
+### Path 1 (emergency) — Render dashboard rollback
+
+For an incident in progress, roll back the *running* deploy immediately
+without waiting on CI or a PR review. A person does this by hand in the
+Render dashboard — it is deliberately not something Claude can trigger
+(the Phase 20 hook blocks it; see "Guardrail hook" below).
+
+**Runbook:**
+1. Open the Render dashboard → the affected service (`ctrm-staging` or
+   `ctrm-production`) → **Events** (or **Deploys**) tab.
+2. Find the last deploy that was known-good (before the bad one) and
+   click **Rollback to this deploy** (Render's own built-in action).
+3. Confirm. Render redeploys that earlier build; `healthCheckPath:
+   /api/health` (Phase 19) gates traffic the same way it does for any
+   normal deploy, so traffic only cuts over once the rolled-back
+   version reports healthy.
+4. Verify by hand: open the service's URL and confirm the bad behavior
+   is gone, and/or check `GET /api/health`'s `commit` field matches the
+   known-good SHA.
+
+**What this does NOT fix:**
+- `main` still has the bad commit. The dashboard rollback only changes
+  which *build* is currently running — it doesn't touch git history at
+  all.
+- The next new deploy brings the bad commit back. For `ctrm-staging`
+  that's the very next merge to `main` (Phase 19's `checksPass`
+  auto-deploy); for `ctrm-production` it's the next approved deploy
+  (Phase 21). Neither service is "fixed" going forward until Path 2
+  also runs.
+- Waking from free-tier sleep does **not** redeploy — it only restarts
+  whatever build is already deployed (the rolled-back one, if that's
+  what was active when it slept) — so sleep/wake cycles don't undo this
+  rollback or silently bring the bad commit back on their own.
+
+Use Path 1 alone only as a stopgap, immediately followed by Path 2 —
+never as the whole fix.
+
+### Path 2 (proper fix) — `npm run rollback -- <sha>`
+
+Actually removes the bad commit's effect from `main`'s history, going
+through the normal PR/CI/review pipeline rather than around it.
+
+**Decision** (spec.md §11, decision 9, revised): `npm run rollback --
+<commit-sha>` (`scripts/rollback.mjs`, invoked via the root
+`package.json`'s `rollback` script) does the following, and **never
+pushes to `main` directly**:
+1. Checks the given commit is actually on `main` (an ancestor of
+   `origin/main`) — refuses otherwise.
+2. Checks the working tree is clean, and that local `main` (if it
+   exists) matches `origin/main` — refuses otherwise, so the operator
+   isn't rolling back against a stale view of `main`.
+3. Fetches `origin/main` and creates a new branch, `revert-<short-sha>`,
+   from it (not from local `main`, which could be stale even after the
+   check above if something changed between the fetch and here —
+   branching from `origin/main` directly removes that window).
+4. Runs `git revert --no-edit <sha>` on that branch (`-m 1` added
+   automatically when `<sha>` is a merge commit, since plain `git
+   revert` refuses a merge commit without a mainline parent specified).
+5. Pushes `revert-<short-sha>` to `origin` (never `main`).
+6. Opens a pull request into `main` with `gh pr create`. If `gh` is
+   missing or not logged in (`gh auth status` fails), the branch is
+   still pushed and the script prints the GitHub compare URL to open
+   the pull request by hand instead of failing.
+7. A `--dry-run` flag prints every git/`gh` command it would run,
+   without running any of them — used both to preview a real rollback
+   and by this phase's own tests.
+
+Once merged, this re-enters the normal pipeline exactly like any other
+change: CI, `ctrm-staging`'s `checksPass` auto-deploy, and — for
+production — the Phase 21 approval gate. Rollback is not a way around
+that gate, by design.
+
+**Migrations can't be rolled back, so they must be additive:**
+reverting a commit in git does **not** undo any database migration that
+commit's *original* deploy already applied — `prisma migrate deploy`
+has no corresponding "unmigrate," and Render's free tier has no
+database snapshot/restore step wired into this pipeline. If the bad
+commit's migration already ran (on staging or production) before
+either rollback path kicks in, reverting the *code* leaves the
+database's schema changed regardless. The practical consequence:
+**every migration in this project must be additive (expand/contract)**
+— add a new column/table rather than rename or widen one in place,
+backfill it, and only ever drop or rename the old one in a *later*,
+separate change once nothing still depends on it — so that reverting
+the code that *used* a migration never requires the schema to go
+backwards too. This is now a standing rule, not just advice for this
+phase: added to `REVIEW.md`'s "Always check" list (below) so every
+future migration gets checked against it.
+
+**Guardrail hook still applies, confirmed:** Phase 20's
+`block-production-deploy.js` hook blocks Claude from calling the
+production deploy hook URL, approving the `production` Environment's
+pending-deployment review, or using Render's CLI/API to deploy or roll
+back `ctrm-production` directly. Nothing in this phase's design asks
+Claude to do any of those — Path 1 is explicitly a human-in-the-
+dashboard action, and Path 2 only ever pushes a branch and opens a PR,
+never touching Render at all — so the hook's scope doesn't need to
+change, and this phase doesn't introduce a new way around it.
+
+**Staging rehearsal plan (do before this phase is considered done):**
+1. Push a trivial, clearly-identifiable change to `main`; let it
+   auto-deploy to `ctrm-staging`.
+2. **Rehearse Path 1:** in the Render dashboard, roll `ctrm-staging`
+   back to the deploy before that change. Confirm the behavior is
+   gone and `/api/health`'s `commit` matches the earlier SHA. Confirm
+   (by re-reading the runbook, not by actually doing it) that merging
+   anything new to `main` right now would bring the trivial change
+   back — i.e. the dashboard rollback alone didn't fix `main`.
+3. **Rehearse Path 2:** run `npm run rollback -- <that commit's sha>`
+   (no `--dry-run` this time) against the real repo. Confirm it refuses
+   if tried against a dirty tree or a non-`main` commit (quick manual
+   sanity check, beyond the automated tests below). Confirm it opens a
+   PR, never pushes to `main` directly, and that merging that PR
+   re-triggers CI and `ctrm-staging`'s normal auto-deploy, landing back
+   on the prior behavior with the bad commit now actually reverted from
+   `main`'s history.
+4. Only after both paths have been exercised once on staging does this
+   phase close out; production rollback (Path 1 by a human, Path 2's PR
+   still going through the normal Phase 21 approval) is not rehearsed
+   live against production itself — the staging rehearsal plus the
+   automated tests below are the bar.
 
 **Files:**
-- `package.json` (root) — new `rollback` script.
-- `intent/spec.md` — §11, decision 9.
-- `intent/changes/008-deploy-demo.md` — rollback approach recorded;
-  `Status` → `done` once this phase (the last of the change) is
-  implemented and verified — this closes out the change.
+- `scripts/rollback.mjs` — new; implements Path 2 as described above.
+- `package.json` (root) — new `rollback` script running it.
+- `backend/test/rollback.test.ts` — new (see Tests, below).
+- `intent/spec.md` — §11, decision 9 (revised).
+- `intent/changes/008-deploy-demo.md` — rollback approach recorded as
+  revised; `Status` → `done` once this phase (the last of the change)
+  is implemented and verified — this closes out the change.
+- `REVIEW.md` — "Always check" gains the additive-migrations rule.
 
 **Business rules implemented:** none — deployment infrastructure only.
 
-**Tests:** none planned — a thin wrapper around `git revert`/`git
-push`, verified manually.
+**Tests** (`backend/test/rollback.test.ts`, run against a disposable
+local git repo + local bare "origin" created in the test itself — never
+the real repo or a real remote, so a dirty working tree from unrelated
+in-progress work, or this very session's own uncommitted changes, can't
+make these tests flaky or risk pushing anything real):
+- Refuses a commit that isn't on `main` (a dangling commit object
+  created with `git commit-tree`, never attached to any branch or
+  pushed, so it can never be an ancestor of `origin/main`) — exits
+  non-zero, `--dry-run`.
+- Refuses a dirty working tree (an uncommitted scratch file in the
+  disposable repo) — exits non-zero, `--dry-run`.
+- With a clean tree and a commit that is on `main`, `--dry-run` exits
+  zero, prints that it would push the `revert-<short-sha>` branch, and
+  never prints a push targeting `main`.
 
-**Manual check:** push a trivial, clearly-identifiable change to
-`main`, let it deploy to staging, then run `npm run rollback -- <that
-commit's sha>` and confirm a revert commit is created and pushed, CI
-runs on it, and staging redeploys back to the prior behavior.
+**Manual check:** the staging rehearsal above, plus: run `npm run
+rollback -- <sha> --dry-run` locally against this real repo and confirm
+every printed command targets a `revert-<short-sha>` branch, never
+`main`, before ever running it for real.
 
 ---

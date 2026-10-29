@@ -109,12 +109,23 @@ none are implied by the intent and none are added.
    is out of scope for this version. Decision recorded in
    `intent/changes/008-deploy-demo.md`.
 
-9. **Rollback is a single script, not a platform-specific dashboard
-   action.** `npm run rollback -- <sha>` reverts and re-pushes to
-   `main`, reusing the normal CI/deploy pipeline rather than Render's
-   dashboard rollback button, so the same path is exercised — and can
-   be practiced on staging — whether rolling forward or back. Decision
-   recorded in `intent/changes/008-deploy-demo.md`.
+9. **Rollback is two paths, not one.** Decision recorded in
+   `intent/changes/008-deploy-demo.md`, detail in section 11:
+   - **Emergency:** a person rolls back the *running* deploy by hand in
+     Render's dashboard. Fast, but fixes nothing in git — `main` still
+     has the bad commit, and the next deploy (e.g. the next merge to
+     `main`) brings it back.
+   - **Proper fix:** `npm run rollback -- <sha>` creates a
+     `revert-<short-sha>` branch from `origin/main`, reverts `<sha>` on
+     it, pushes that branch, and opens a pull request into `main` —
+     never pushing to `main` directly, since this repo's branch
+     protection blocks that. Merging the PR re-enters the normal
+     CI/deploy pipeline (staging auto-deploy, approval-gated production
+     deploy) like any other change. The original design (`git revert
+     && git push origin main` directly) is superseded: it was blocked
+     outright by branch protection.
+   Rollback (either path) does not undo a database migration already
+   applied by the bad deploy — see section 11's Migrations note.
 
 ## 3. Areas of concern
 
@@ -668,7 +679,16 @@ section 2, decisions 7-9):
   listening — not a separate Render "Pre-Deploy Command" or one-off
   job, since Render's free tier offers neither. It's idempotent, so
   running it on every boot (including every cold-start wake from sleep)
-  is safe.
+  is safe. **Every migration must be additive (expand/contract)** — add
+  a column/table rather than rename or drop one in place, backfill it,
+  and only remove or rename the old one in a later, separate change
+  once nothing still depends on it. This isn't optional once section
+  11's rollback exists: reverting a commit in git never undoes a
+  migration that commit's deploy already applied (there's no
+  "unmigrate," and no database snapshot/restore in this pipeline), so a
+  non-additive migration would leave the schema broken under the
+  reverted code even after a successful rollback. See decision 9 and
+  `REVIEW.md`'s "Always check" list.
 - **Seed:** `backend/prisma/seed.ts` (reference data only — Commodity,
   Counterparty, Warehouse) also runs on every boot, immediately after
   migrations. It's already upsert-based (phase 1 of the plan), so
@@ -700,12 +720,28 @@ section 2, decisions 7-9):
   approved commit's SHA, failing the workflow run if it never does — this
   also covers a sleeping free-tier service taking close to a minute to
   wake and serve the new version.
-- **Rollback:** `npm run rollback -- <commit-sha>`, which runs `git
-  revert <sha> --no-edit && git push origin main` — this re-enters the
-  same pipeline as a normal change (CI, staging auto-deploy,
-  approval-gated production deploy) rather than a second,
-  separately-maintained mechanism. Practiced on staging before it's
-  ever needed on production (decision 9).
+- **Rollback:** two paths (decision 9), both documented as a runbook in
+  `intent/plan.md` Phase 22 and rehearsed on staging before either is
+  ever needed on production:
+  - **Emergency:** a person rolls back the running deploy by hand via
+    Render's dashboard "rollback to this deploy" action. Immediate, but
+    doesn't touch `main` — the bad commit is still there, and the next
+    deploy (e.g. the next merge to `main`) brings it back; a free-tier
+    sleep/wake cycle restarts whatever's currently deployed and does
+    *not* redeploy, so it can't silently undo this either way.
+  - **Proper fix:** `npm run rollback -- <commit-sha>`
+    (`scripts/rollback.mjs`) checks `<sha>` is on `main`, the working
+    tree is clean and `main` is up to date, creates a
+    `revert-<short-sha>` branch from `origin/main`, runs `git revert`
+    on it (`-m 1` for a merge commit), pushes that branch (never
+    `main`), and opens a pull request with `gh` (falling back to
+    printing the compare URL if `gh` is unavailable or logged out).
+    Merging the PR re-enters the same pipeline as a normal change (CI,
+    staging auto-deploy, approval-gated production deploy) rather than
+    a second, separately-maintained mechanism. A `--dry-run` flag
+    previews every command without running it.
+  Neither path undoes a database migration the bad deploy already
+  applied — see the Migrations bullet above and decision 9.
 - **Secrets:** `DATABASE_URL` for each environment lives only as a
   Render environment variable (wired via `render.yaml`'s `fromDatabase`
   where possible); the production deploy hook URL lives only as a
