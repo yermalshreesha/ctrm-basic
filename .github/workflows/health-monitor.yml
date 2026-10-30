@@ -66,7 +66,12 @@ jobs:
           response_ms="n/a"
           while [ "$SECONDS" -lt "$deadline" ]; do
             start_ms=$(date +%s%3N)
-            status=$(curl -s --max-time 10 -o /tmp/health-body.txt -w "%{http_code}" "$CHECK_URL")
+            # GitHub runs this step's shell with "exit on error", so a curl
+            # timeout or connection failure would otherwise stop the step
+            # right here -- skipping the rest of the retry loop and leaving
+            # a real outage unreported. "|| status=000" catches that failure
+            # and lets the loop continue.
+            status=$(curl -s --max-time 10 -o /tmp/health-body.txt -w "%{http_code}" "$CHECK_URL") || status="000"
             status="${status:-000}"
             end_ms=$(date +%s%3N)
             response_ms="$((end_ms - start_ms))ms"
