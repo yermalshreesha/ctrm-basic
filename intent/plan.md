@@ -1921,3 +1921,63 @@ every printed command targets a `revert-<short-sha>` branch, never
 `main`, before ever running it for real.
 
 ---
+
+## Phase 23 — Change 009: Scheduled dependency security scan
+
+**Goal:** catch known vulnerabilities in our npm dependencies
+automatically, instead of only when someone happens to run `npm audit`
+by hand. Runs on a daily schedule and on demand (for demos), reports
+findings as a GitHub issue, and never touches code or packages itself —
+fixing a flagged vulnerability still goes through the normal PR
+process.
+
+**Decision:**
+- New workflow `.github/workflows/security-scan.yml`:
+  - Triggers: `schedule` (daily cron) and `workflow_dispatch` (manual
+    "Run workflow" button).
+  - Permissions: `contents: read`, `issues: write` only — it never
+    needs to push code, open PRs, or anything beyond reading the repo
+    and filing/updating an issue.
+  - Steps: check out the repo, install dependencies (`npm ci`), run
+    `npm audit --audit-level=high --json` (captured to a file; `||
+    true` so a non-zero exit from audit finding vulnerabilities doesn't
+    fail the step before the findings are reported), then run a small
+    Node script that reads the audit JSON and reports it.
+- New script `scripts/security-scan-report.mjs` (same style/location as
+  `scripts/rollback.mjs`):
+  - Reads the audit JSON; does nothing (prints "no high/critical
+    findings") if there are no `high`/`critical` entries.
+  - Otherwise builds a plain-text summary (counts by severity, and the
+    affected package names with their severity and whether a fix is
+    available) and uses `gh` (via `GH_TOKEN`) to search open issues
+    labelled `security-scan`:
+    - None found: `gh issue create` with that label and the summary as
+      the body.
+    - One found: `gh issue edit` to replace its body with the fresh
+      summary (plus a comment noting the re-scan date), rather than
+      opening a duplicate.
+  - The `security-scan` label is created on first use if it doesn't
+    already exist (`gh label create ... || true`), so the first run on
+    a fresh repo doesn't fail for want of the label.
+
+**Files:**
+- `.github/workflows/security-scan.yml` — new.
+- `scripts/security-scan-report.mjs` — new.
+- `intent/changes/009-security-scan.md` — `Status` → `done` once this
+  phase is implemented and verified.
+
+**Business rules implemented:** none — tooling/process only, same
+category as Phases 20–22.
+
+**Tests:** none planned — this is a CI workflow and a small reporting
+script around `gh`/`npm audit`, not app code; verified manually, same
+as Phase 20.
+
+**Manual check:** run the workflow by hand (`workflow_dispatch`) once
+in GitHub Actions and confirm it completes; if the repo currently has
+no high/critical vulnerabilities, temporarily point `--audit-level` at
+a lower severity (or review the job log) to confirm the issue-filing
+path works, then confirm a second run updates the same issue instead of
+creating a new one.
+
+---
