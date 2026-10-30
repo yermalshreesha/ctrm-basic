@@ -108,3 +108,14 @@ for `health-monitor.yml` or `diagnose.mjs`.
   `000000` incident (if any occurred on the real schedule, not just
   this manual demo) be investigated to confirm production itself was
   never actually down?
+
+## Follow-up
+The first fix above removed the `|| echo "000"` fallback entirely.
+Without it, GitHub's "exit on error" step shell meant a `curl` timeout
+stopped the health-check step immediately: the retry loop never ran
+out its full 3 minutes, and the "Report incident" step never ran
+either, since the step itself failed instead of completing with
+`healthy=false`. Found by running the monitor without
+`simulate_failure`. Fixed by guarding the `curl` call with
+`|| status="000"`, so a failed or timed-out `curl` records status
+`000` and the retry loop continues as intended.
