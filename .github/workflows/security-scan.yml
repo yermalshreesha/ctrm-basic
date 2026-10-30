@@ -1,0 +1,47 @@
+name: Security scan
+
+# Checks our npm dependencies for known high/critical vulnerabilities
+# every day, and can also be started by hand from the Actions tab (for
+# demos). It never changes code or packages itself -- it only reads the
+# repo and files/updates a GitHub issue; fixing a flagged vulnerability
+# still goes through the normal PR process.
+on:
+  schedule:
+    # 06:15 UTC daily -- off the hour, to avoid GitHub's top-of-hour
+    # scheduling crunch.
+    - cron: "15 6 * * *"
+  workflow_dispatch:
+
+# Minimal permissions: this workflow only reads the code and files or
+# updates issues. It never pushes code, opens PRs, or touches packages.
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm audit exits non-zero as soon as it finds anything at or
+      # above --audit-level, so `|| true` keeps this step from failing
+      # the job -- the next step decides what to do with the findings.
+      - name: Run npm audit (high and critical only)
+        run: npm audit --audit-level=high --json > audit.json || true
+
+      - name: Report findings as a GitHub issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/security-scan-report.mjs audit.json
