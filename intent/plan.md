@@ -1981,3 +1981,98 @@ path works, then confirm a second run updates the same issue instead of
 creating a new one.
 
 ---
+
+## Phase 24 — Change 010: Production health monitor
+
+**Goal:** notice when production is down without anyone having to
+check, and turn it into tracked work, following the playbook's
+Maintain stage. A scheduled check runs every 6 hours (and on demand),
+retries for a few minutes to allow for the free tier's wake-up delay,
+and files or updates a single "incident" issue when still unhealthy. A
+separate, locally-run script lets Claude draft an investigation from
+that issue afterwards — never inside GitHub Actions itself, which
+would need an API key (out of scope, same as change 009).
+
+**Decision:**
+- New workflow `.github/workflows/health-monitor.yml`:
+  - Triggers: `schedule` (every 6 hours) and `workflow_dispatch` with a
+    boolean input `simulate_failure` (default `false`) that, when
+    true, checks a non-existent path instead of `/api/health` — lets a
+    person rehearse the incident-filing path on demand, for demos,
+    without touching production's real health.
+  - **Schedule changed from every 30 minutes to every 6 hours** after
+    the original design: each check itself sends a request that wakes
+    a sleeping free-tier service back up, so checking every 30 minutes
+    kept production awake almost continuously, burning Render's
+    free-tier instance hours just to monitor it. 6 hours lets the
+    service actually sleep between checks. Accepted trade-off: a real
+    outage can now go undetected for up to ~6 hours instead of ~30
+    minutes — acceptable for a demo app with no SLA; `workflow_dispatch`
+    remains available to check on demand at any time.
+  - Deliberately does **not** use the `production` Environment (Phase
+    21) — that gate requires a person to approve every run, which
+    would defeat an unattended scheduled check. Instead it reads the
+    address to check from a plain repository variable, `MONITOR_URL`
+    (set once under Settings → Secrets and variables → Actions →
+    Variables, not scoped to any Environment).
+  - Permissions: `contents: read`, `issues: write` only — same
+    minimal-permissions pattern as Phase 23's security scan.
+  - Steps: check out the repo (so `scripts/` is available), check
+    health with retries (up to 3 minutes total, 15s between attempts),
+    then — only when still unhealthy — run
+    `scripts/health-monitor-report.mjs` to file/update the issue.
+- New script `scripts/health-monitor-report.mjs` (same `gh`-via-
+  `GH_TOKEN` style as `scripts/security-scan-report.mjs`):
+  - Builds the issue body in the intent format: Problem, Evidence
+    (status code, response body, response time, checked-at time),
+    Proposed outcome, Affected systems, Open questions.
+  - Creates the `incident` label if missing, then searches open issues
+    labelled `incident`: none found → `gh issue create`; one found →
+    `gh issue edit` to refresh the body, plus a comment noting the
+    re-check time — same "one open issue, never a duplicate" pattern
+    as Phase 23's security-scan issue.
+  - A simulated run's issue body says so explicitly, so a demo is
+    never mistaken for a real outage.
+- New script `scripts/diagnose.mjs`, run locally only (`npm run
+  diagnose -- <issue-number>`):
+  - Reads the named incident issue with `gh issue view`.
+  - Runs `claude -p` with a restricted tool set — read-only
+    investigation of the repo (`Read`, `Grep`, `Glob`, `Bash(gh issue
+    view:*)`, `Bash(git log:*)`, `Bash(git show:*)`) plus `Write`
+    scoped only to `intent/changes/*` — so it can draft one new intent
+    file but cannot edit any existing file or touch application code.
+    Like the guardrail hooks (Phase 20), this is a second layer, not
+    the only one: the prompt itself also tells Claude not to touch
+    anything else.
+  - The drafted file follows the existing `intent/changes/NNN-slug.md`
+    numbering/template, status `draft`, referencing the incident issue
+    number — left for a person to review; nothing is committed
+    automatically.
+
+**Files:**
+- `.github/workflows/health-monitor.yml` — new.
+- `scripts/health-monitor-report.mjs` — new.
+- `scripts/diagnose.mjs` — new.
+- `package.json` — new root script `diagnose`.
+- `intent/changes/010-health-monitor.md` — `Status` → `done` once this
+  phase is implemented and verified.
+
+**Business rules implemented:** none — tooling/process only, same
+category as Phases 20–23.
+
+**Tests:** none planned — a CI workflow and two small scripts around
+`gh`/`curl`/`claude`, not app code; verified manually, same as Phase
+23.
+
+**Manual check:**
+- Run the workflow by hand with `simulate_failure: true` and confirm
+  it opens an "incident" issue (creating the label on first run);
+  run it again and confirm it updates the same issue instead of
+  duplicating.
+- Run it by hand with `simulate_failure: false` against a healthy
+  `MONITOR_URL` and confirm no issue is created or changed.
+- Locally: `npm run diagnose -- <issue-number>` against the issue just
+  filed, and confirm a single new draft file appears under
+  `intent/changes/`, with `git status` showing no other file touched.
+
+---
