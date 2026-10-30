@@ -1,6 +1,6 @@
 # Change: Deploy CTRM as an online demo
 Requested by: Yermal Udaya Shreesha   Date: [today's date]
-Status: in progress
+Status: done
 
 ## What they asked for
 Show the CTRM app to others through a link, instead of only on my

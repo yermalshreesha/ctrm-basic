@@ -1888,6 +1888,23 @@ change, and this phase doesn't introduce a new way around it.
    live against production itself — the staging rehearsal plus the
    automated tests below are the bar.
 
+**Staging rehearsal results (2026-10-30): passed.**
+- **Path 1:** Render's dashboard rollback on `ctrm-staging` restored
+  the previous version in about a minute, with no rebuild.
+- **Path 2:** `npm run rollback -- 5718c2d` created branch
+  `revert-5718c2d` with `-m 1` (the rolled-back commit was a merge),
+  pushed only that branch, and opened PR #26 with `gh`, then switched
+  back to `main` — never touching `main` directly. After merging,
+  `ctrm-staging` redeployed the revert commit via the normal
+  `checksPass` auto-deploy.
+- The production deploy triggered for this rehearsal change was
+  rejected at the Phase 21 approval gate, as intended — confirming the
+  gate still applies to a rollback PR like any other change.
+- **Follow-up (not blocking):** the script left the local
+  `revert-5718c2d` branch behind after the PR merged; it doesn't delete
+  it. Worth a small cleanup pass in a later phase (delete the local
+  branch after a successful push, or after detecting the PR merged).
+
 **Files:**
 - `scripts/rollback.mjs` — new; implements Path 2 as described above.
 - `package.json` (root) — new `rollback` script running it.
