@@ -83,7 +83,7 @@ export function run(argv) {
       "-p",
       prompt,
       "--allowedTools",
-      "Read,Grep,Glob,Bash(gh issue view:*),Bash(git log:*),Bash(git show:*),Write(intent/changes/*)",
+      "Read,Grep,Glob,Bash(gh issue view:*),Bash(git log:*),Bash(git show:*),Edit(intent/changes/*)",
     ],
     { cwd: repoRoot, stdio: "inherit" },
   );
