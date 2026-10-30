@@ -1,6 +1,6 @@
 # Change: Production health monitor
 Requested by: Yermal Udaya Shreesha   Date: [today's date]
-Status: in progress
+Status: done
 
 ## What they asked for
 Notice when production is down without anyone having to check, and
