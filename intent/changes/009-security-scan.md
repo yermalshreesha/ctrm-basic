@@ -1,6 +1,6 @@
 # Change: Scheduled security scan
-Requested by: Yermal Udaya Shreesha   Date: [today's date]
-Status: in progress
+Requested by: Yermal Udaya Shreesha   Date: [30-10-2026]
+Status: done
 
 ## What they asked for
 Find known security problems in our packages automatically, instead
