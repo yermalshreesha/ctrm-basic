@@ -19,7 +19,8 @@
     "db:seed": "npm run db:seed -w backend",
     "db:test:migrate": "npm run db:test:migrate -w backend",
     "db:test:reset": "npm run db:test:reset -w backend",
-    "rollback": "node scripts/rollback.mjs"
+    "rollback": "node scripts/rollback.mjs",
+    "diagnose": "node scripts/diagnose.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
