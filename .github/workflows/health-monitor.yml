@@ -51,6 +51,8 @@ jobs:
           MONITOR_URL: ${{ vars.MONITOR_URL }}
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
         run: |
+          MONITOR_URL=$(printf '%s' "$MONITOR_URL" | tr -d '[:space:]')
+
           if [ "$SIMULATE_FAILURE" = "true" ]; then
             CHECK_URL="$MONITOR_URL/api/this-path-does-not-exist"
           else
@@ -64,7 +66,8 @@ jobs:
           response_ms="n/a"
           while [ "$SECONDS" -lt "$deadline" ]; do
             start_ms=$(date +%s%3N)
-            status=$(curl -s --max-time 10 -o /tmp/health-body.txt -w "%{http_code}" "$CHECK_URL" || echo "000")
+            status=$(curl -s --max-time 10 -o /tmp/health-body.txt -w "%{http_code}" "$CHECK_URL")
+            status="${status:-000}"
             end_ms=$(date +%s%3N)
             response_ms="$((end_ms - start_ms))ms"
             body=$(cat /tmp/health-body.txt 2>/dev/null || echo "")
