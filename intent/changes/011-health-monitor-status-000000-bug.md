@@ -1,6 +1,6 @@
 # Change: Fix health-monitor false "000000" status and diagnose.mjs tool scope
 Requested by: Yermal Udaya Shreesha   Date: [30-10-2026]
-Status: in progress
+Status: done
 
 ## What they asked for
 Issue #32, "Incident (simulated): health monitor demo run", reports a
