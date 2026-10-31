@@ -1,7 +1,6 @@
 # Change: Two new screens under Logistics
-Requested by: Yermal Udaya Shreesha   Date: [today's date]
-Status: in progress
-
+Requested by: Yermal Udaya Shreesha   Date: [30-10-2026]
+Status: done
 ## What they asked for
 Add two new screens under the Logistics section: "Shipment listing"
 and "Sales fulfillment". For now they are empty placeholder screens;
