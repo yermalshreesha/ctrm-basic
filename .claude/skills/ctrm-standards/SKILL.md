@@ -20,7 +20,13 @@ description: Apply the ctrm-basic project's design and coding standards. Use whe
    backend, never only in the UI.
 5. Validation: every API input is validated against a schema.
 6. UI: sidebar navigation with Dashboard, Trades, Logistics, Inventory.
-   List pages use tables; forms show validation errors next to fields.
+   A top-level section may have its own sub-items (e.g. Logistics's
+   sub-screens) instead of being a single flat link — this doesn't
+   change the four top-level sections, only allows nesting under one
+   of them. Sub-items are shown only while the current page is within
+   that section (derived from the route), and hidden otherwise — not a
+   separate expand/collapse click state. List pages use tables; forms
+   show validation errors next to fields.
 7. Tests: every business rule has at least one automated test.
 8. Secrets: never print or log passwords, connection strings or keys,
    including in error messages.

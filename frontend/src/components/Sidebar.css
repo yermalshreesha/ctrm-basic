@@ -46,3 +46,17 @@
   color: var(--gold);
   font-weight: 600;
 }
+
+.sidebar-sublist {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-sublist a {
+  padding: 8px 12px;
+  font-size: 13px;
+}

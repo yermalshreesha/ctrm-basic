@@ -30,9 +30,19 @@ their content will come in later changes.
 - Backend or database changes.
 - Changes to the existing Logistics screen.
 
-## Open questions
-- Is "Shipment listing" different from the existing Logistics screen,
-  which already lists shipments? If it's the same thing, should it
-  replace or rename it instead of adding a new screen?
-- How should the sub-items appear: always visible under Logistics,
-  or expanding when Logistics is clicked?
+## Decision
+- "Shipment listing" is a new, separate, currently-empty screen —
+  not a rename or replacement of the existing Logistics screen, which
+  already lists shipments and stays exactly as it is.
+- **Revised:** the two new sub-items (Shipment listing, Sales
+  fulfillment) are shown only while the current page is within the
+  Logistics section (the shipment list, a shipment detail/new form, or
+  either placeholder), and hidden while on Dashboard, Trades, or
+  Inventory — derived from the current route, not a separate
+  expand/collapse click state. (Originally built as always-visible;
+  changed after the first implementation per product owner feedback.)
+- Routes: `/logistics/shipment-listing` and
+  `/logistics/sales-fulfillment`.
+- ctrm-standards rule 6 is updated to allow a top-level section to
+  have always-visible sub-items. See `intent/plan.md` Phase 25 and
+  `intent/spec.md` §8.
