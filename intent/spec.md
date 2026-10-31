@@ -475,7 +475,16 @@ transition or an insufficient-stock rejection.
 ## 8. Screens
 
 Sidebar navigation: Dashboard, Trades, Logistics, Inventory (standard
-6). Counterparties and Warehouses are seed data in this version
+6). Logistics is a section with two sub-items — "Shipment listing" and
+"Sales fulfillment" (own URLs, placeholder content only — see below and
+`intent/changes/012-logistics-screens.md`) — alongside its existing
+top-level link to the shipment list; standard 6 was extended to allow a
+section to have sub-items, rather than every top-level entry being a
+single flat link. The sub-items are shown only while the current page
+is within the Logistics section (the shipment list, a shipment detail/
+new form, or either placeholder) and hidden while on any other section
+— derived from the current route, not a separate expand/collapse click
+state. Counterparties and Warehouses are seed data in this version
 (decision 3) — they have no dedicated screens and appear only as
 dropdown options, populated from `GET /api/counterparties` and `GET
 /api/warehouses`, on the Trade and Shipment forms.
@@ -527,6 +536,13 @@ dropdown options, populated from `GET /api/counterparties` and `GET
   the ledger lists every movement regardless of the resulting
   balance, unaffected by the current-stock table's zero-balance
   exclusion.
+- **Shipment listing** and **Sales fulfillment** — two placeholder
+  screens under the Logistics section, each showing only its title
+  and a short "Coming soon" message; no data, no forms, no API calls.
+  Each has its own URL and survives a refresh. Distinct from the
+  existing Logistics screen above, which is unchanged. Per
+  `intent/changes/012-logistics-screens.md`; their real content is
+  deferred to a future change (see section 10).
 
 All table links use clear link text (e.g. "View trade", "View
 shipment"), never a raw id or an unrelated data value repurposed as
@@ -645,6 +661,11 @@ stock"**
   notes change request (`intent/changes/001-trade-notes.md`): Shipment
   has no `notes` field, and `Trade.notes` keeps no edit history — only
   the current value is stored, same as every other Trade field.
+- **Content of the Shipment listing and Sales fulfillment screens.**
+  Per `intent/changes/012-logistics-screens.md`, these two screens are
+  empty placeholders in this version — no tables, filters, data, or
+  actions. What each screen actually shows is deferred to a future
+  change.
 
 ## 11. Deployment
 

@@ -3,7 +3,9 @@ import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
 import { Logistics } from "./pages/Logistics";
+import { SalesFulfillment } from "./pages/SalesFulfillment";
 import { ShipmentDetail } from "./pages/ShipmentDetail";
+import { ShipmentListing } from "./pages/ShipmentListing";
 import { Trades } from "./pages/Trades";
 import { TradeDetail } from "./pages/TradeDetail";
 import "./App.css";
@@ -20,6 +22,8 @@ function App() {
           <Route path="/trades/:id" element={<TradeDetail />} />
           <Route path="/logistics" element={<Logistics />} />
           <Route path="/logistics/new" element={<ShipmentDetail />} />
+          <Route path="/logistics/shipment-listing" element={<ShipmentListing />} />
+          <Route path="/logistics/sales-fulfillment" element={<SalesFulfillment />} />
           <Route path="/logistics/:id" element={<ShipmentDetail />} />
           <Route path="/inventory" element={<Inventory />} />
         </Routes>

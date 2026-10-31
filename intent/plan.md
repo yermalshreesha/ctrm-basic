@@ -2076,3 +2076,96 @@ category as Phases 20–23.
   `intent/changes/`, with `git status` showing no other file touched.
 
 ---
+
+## Phase 25 — Change 012: Logistics sub-screens (Shipment listing, Sales fulfillment)
+
+**Goal:** add two new empty placeholder screens under the Logistics
+section — "Shipment listing" and "Sales fulfillment" — each reachable
+via its own URL and shown in the sidebar as sub-items under Logistics,
+per `intent/changes/012-logistics-screens.md`. Frontend-only; no
+backend, database, or business-rule changes. Their content is deferred
+to later changes.
+
+**Decisions confirmed with the product owner for this phase
+(2026-10-30), recorded in spec.md:**
+- "Shipment listing" is a new, separate, currently-empty screen — not
+  a rename or replacement of the existing Logistics screen (which
+  already lists shipments and stays exactly as it is, unchanged by
+  this phase).
+- **Revised after initial implementation:** the two new sub-items are
+  shown only while the current page is within the Logistics section —
+  the shipment list, a shipment detail/new form, or either new
+  placeholder (i.e. the route starts with `/logistics`) — and hidden
+  while on Dashboard, Trades, or Inventory. This is derived from the
+  current route on every render, not a separate expand/collapse click
+  state, so a direct link or refresh into a sub-page still shows them
+  correctly. The original design (always visible) was replaced by this
+  per product owner feedback after the first implementation. The
+  existing top-level "Logistics" link is unchanged and keeps going to
+  the existing shipment list at `/logistics`, which also reveals the
+  sub-items since that's now a Logistics-section page.
+- Routes: `/logistics/shipment-listing` and
+  `/logistics/sales-fulfillment`, both rendered by small placeholder
+  components (title + "Coming soon" message only — no data, no forms,
+  no API calls). Each has its own address and survives a refresh
+  (real React Router routes, not client-only state).
+- ctrm-standards rule 6 ("sidebar navigation with Dashboard, Trades,
+  Logistics, Inventory") is updated to allow a top-level section to
+  have always-visible sub-items, since it previously implied exactly
+  four flat links with no nesting — per the change doc's "Affects
+  existing" note.
+
+**Files:**
+- `.claude/skills/ctrm-standards/SKILL.md` — rule 6 updated to
+  describe sub-items under a section.
+- `intent/spec.md` — §8 (Screens), sidebar navigation description.
+- `frontend/src/components/Sidebar.tsx` — nav data structure gains
+  nested sub-items under the Logistics entry; renders them as a
+  sub-list only while `useLocation().pathname` starts with
+  `/logistics`.
+- `frontend/src/components/Sidebar.css` — minor styling for the nested
+  sub-items (indentation), per ctrm-standards rule 9's spacing
+  conventions.
+- `frontend/src/App.tsx` — two new routes: `/logistics/shipment-listing`,
+  `/logistics/sales-fulfillment`.
+- `frontend/src/pages/ShipmentListing.tsx` — new placeholder page
+  (title + "Coming soon").
+- `frontend/src/pages/SalesFulfillment.tsx` — new placeholder page
+  (title + "Coming soon").
+- `frontend/test/Sidebar.test.tsx` — existing "renders the four nav
+  links in order" test updated for the new nested structure; new tests
+  for the two sub-items (see Tests, below).
+- `intent/changes/012-logistics-screens.md` — open questions resolved
+  (recorded above); `Status` → `done` once implemented and verified.
+
+**Business rules implemented:** none — pure UI/navigation scaffolding,
+no data, no API calls.
+
+**Tests:**
+- Sidebar renders only Dashboard, Trades, Logistics, Inventory (no
+  sub-items) while on a non-Logistics route (e.g. `/`).
+- Sidebar renders "Shipment listing" and "Sales fulfillment" nested
+  under Logistics, in order, while on `/logistics`, each linked to its
+  own route.
+- Sidebar keeps the sub-items visible while rendered directly on
+  `/logistics/shipment-listing` (proves visibility survives a refresh
+  on a sub-page, not just a click from the list).
+- Clicking "Shipment listing" navigates to `/logistics/shipment-listing`
+  and renders its title and "Coming soon" message; same for "Sales
+  fulfillment" at `/logistics/sales-fulfillment`.
+- Visiting either URL directly (not via a sidebar click) renders the
+  same placeholder — proves each has its own address and survives a
+  refresh.
+- The existing Logistics screen (`/logistics`) is unaffected — still
+  renders the shipment list exactly as before.
+
+**Manual check:** open the app on Dashboard and confirm Logistics shows
+no sub-items; click "Logistics" and confirm "Shipment listing" and
+"Sales fulfillment" appear beneath it; click each and confirm a plain
+"Coming soon" placeholder with the right title, with the sub-items
+still visible; click "Trades" or "Inventory" and confirm the sub-items
+disappear again; refresh the browser directly on
+`/logistics/shipment-listing` and confirm both the page and the
+sidebar's sub-items still render correctly.
+
+---
