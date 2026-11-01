@@ -47,6 +47,24 @@
   font-weight: 600;
 }
 
+.sidebar-section-label {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+  color: var(--sidebar-text-muted);
+  /* Not a link — Trades has no page of its own, it only groups its
+     sub-items (intent/changes/013-trade-screens.md). */
+  cursor: default;
+}
+
+.sidebar-section-label.active {
+  background: var(--gold-bg);
+  border-left-color: var(--gold);
+  color: var(--gold);
+  font-weight: 600;
+}
+
 .sidebar-sublist {
   list-style: none;
   padding: 0;

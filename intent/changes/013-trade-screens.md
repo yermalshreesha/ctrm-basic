@@ -1,6 +1,6 @@
 # Change: Two sub-screens under Trades
 Requested by: Yermal Udaya Shreesha   Date: [01-11-2026]
-Status: in progress
+Status: done
 
 ## What they asked for
 Same as change 012 for Logistics: when Trades is clicked in the
