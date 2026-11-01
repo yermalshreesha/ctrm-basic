@@ -36,21 +36,24 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Approvals" })).toHaveAttribute("href", "/trades/approvals");
   });
 
-  it("keeps Trades's sub-items visible, and its top-level label collapsed to plain text, while on the existing (now unlinked) Trades list or a trade detail page", () => {
+  it("keeps Trades's sub-items visible, and its top-level label collapsed to plain text, while on the existing (now unlinked) Trades list", () => {
     render(
       <MemoryRouter initialEntries={["/trades"]}>
         <Sidebar />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("link", { name: "Approvals" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Approvals" })).toHaveAttribute("href", "/trades/approvals");
     expect(screen.getAllByRole("link", { name: "Trades" })).toHaveLength(1);
+  });
 
+  it("keeps Trades's sub-items visible, and its top-level label collapsed to plain text, while on a trade detail page", () => {
     render(
       <MemoryRouter initialEntries={["/trades/some-trade-id"]}>
         <Sidebar />
       </MemoryRouter>,
     );
-    expect(screen.getAllByRole("link", { name: "Approvals" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Approvals" })).toHaveAttribute("href", "/trades/approvals");
+    expect(screen.getAllByRole("link", { name: "Trades" })).toHaveLength(1);
   });
 
   it("shows Logistics's sub-items, linked to their own routes, while on the Logistics list page, with Trades still a link (outside its own section)", () => {

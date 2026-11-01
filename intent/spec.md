@@ -496,13 +496,14 @@ placeholder content only — see below and
 top-level "Trades" label never links to the existing Trades list
 (filters, "New trade") — that list is no longer reachable from the
 navigation at all. Outside the Trades section, the top-level "Trades"
-label is a normal link to the new "Trades" placeholder (`/trades/
-trades`), so the section stays reachable from the sidebar; once inside
-the section it collapses to plain text instead, since the "Trades"
-sub-item directly beneath it would otherwise be a second, identically-
-labeled link to the same page. (An earlier revision made the top-level
-label permanently non-interactive, which left the section unreachable
-from the sidebar entirely — corrected after manual verification.) This
+label is a normal link to the new "Trades" placeholder
+(`/trades/trades`), so the section stays reachable from the sidebar;
+once inside the section it collapses to plain text instead, since the
+"Trades" sub-item directly beneath it would otherwise be a second,
+identically-labeled link to the same page. (An earlier revision made
+the top-level label permanently non-interactive, which left the
+section unreachable from the sidebar entirely — corrected after manual
+verification.) This
 is still an instance of standard 6's "instead of being a single flat
 link," so the standard itself needed no further change. The sub-items
 use the same route-derived visibility mechanism as Logistics's —
