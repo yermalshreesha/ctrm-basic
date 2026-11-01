@@ -2169,3 +2169,131 @@ disappear again; refresh the browser directly on
 sidebar's sub-items still render correctly.
 
 ---
+
+## Phase 26 — Change 013: Trades sub-screens (Trades, Approvals)
+
+**Goal:** add two new empty placeholder screens under the Trades
+section — "Trades" and "Approvals" — each reachable via its own URL
+and shown in the sidebar as sub-items under Trades, per
+`intent/changes/013-trade-screens.md`. Frontend-only; no backend,
+database, or business-rule changes. Their content is deferred to later
+changes.
+
+**How this differs from Phase 25 (change 012, the Logistics
+sub-screens this mirrors):** Logistics's top-level link kept pointing
+at the existing shipment list, which also reveals the sub-items. Here,
+the product owner decided the existing Trades list is **no longer
+reachable from the navigation at all** — so there's no page left for
+the top-level "Trades" label to link to, and the first sub-item is
+itself named "Trades" (not a differently-named placeholder like
+"Shipment listing"). This forces three decisions Phase 25 didn't need
+to make; each is recorded below.
+
+**Decisions confirmed with the product owner for this phase
+(2026-11-02), recorded in spec.md §8:**
+- **Top-level "Trades" becomes a non-link section header.** It no
+  longer renders as a `NavLink` — it's plain text that groups the two
+  sub-items, since it has no page of its own to point to (the
+  alternative — linking it to the same route as the "Trades"
+  sub-item — was rejected as a redundant second link to the same
+  page). This is still an instance of ctrm-standards rule 6's "instead
+  of being a single flat link," so **no change to the skill file is
+  needed this time** (unlike Phase 25, which had to extend rule 6 for
+  sub-items at all).
+- **Placeholder routes:** `/trades/trades` (label "Trades") and
+  `/trades/approvals` (label "Approvals") — kebab-case of each label,
+  the same slug-from-label convention Phase 25 used
+  (`/logistics/shipment-listing`, `/logistics/sales-fulfillment`),
+  even though `/trades/trades` repeats the section name.
+- **Sub-item visibility stays purely route-prefix-based, covering the
+  legacy pages too:** the Trades sub-items are shown whenever the
+  current path starts with `/trades` — which includes the existing
+  (now unlinked) Trades list (`/trades`) and Trade detail/form pages
+  (`/trades/:id`, `/trades/new`), not just the two new placeholders.
+  Reached via a direct link from the Dashboard or Logistics, those
+  legacy pages still show the Trades section expanded, with no
+  special-casing to tell a "legacy" `/trades/...` route apart from a
+  "new placeholder" one.
+- "Trades" (the sub-item) is a new, separate, currently-empty screen —
+  not a rename or replacement of the existing Trades list, which stays
+  exactly as it is, unchanged by this phase, just unlinked from the
+  sidebar.
+
+**Files:**
+- `intent/spec.md` — §8 (Screens): sidebar navigation description
+  (Trades section, non-link header), the Trades (list) bullet (now
+  nav-unreachable), and a new bullet for the two placeholders; §10
+  (Out of scope) gains a bullet for their deferred content. Already
+  updated as part of drafting this phase.
+- `frontend/src/components/Sidebar.tsx` — nav data structure: the
+  Trades entry gains `children` (`/trades/trades` → "Trades",
+  `/trades/approvals` → "Approvals"); unlike every other top-level
+  entry, Trades's own label renders as plain text instead of a
+  `NavLink` (a small structural change to `NavItem`/the render logic,
+  since every current entry assumes a clickable top-level link); the
+  existing `location.pathname.startsWith(link.to)` check against
+  `/trades` is kept as-is for sub-item visibility, so it continues to
+  cover the legacy `/trades` and `/trades/:id` routes too.
+- `frontend/src/components/Sidebar.css` — only if the non-link header
+  needs a style tweak (e.g. removing a hover/pointer cue a real link
+  would get) so it doesn't look clickable.
+- `frontend/src/App.tsx` — two new routes: `/trades/trades`,
+  `/trades/approvals`.
+- `frontend/src/pages/TradesPlaceholder.tsx` — new placeholder page
+  (title "Trades" + "Coming soon") for the "Trades" sub-item; named
+  `TradesPlaceholder` rather than `Trades` to avoid colliding with the
+  existing `Trades.tsx` list page.
+- `frontend/src/pages/Approvals.tsx` — new placeholder page (title
+  "Approvals" + "Coming soon") for the "Approvals" sub-item.
+- `frontend/test/Sidebar.test.tsx` — the existing "renders the four
+  top-level nav links" test updated: "Trades" is no longer among
+  `getAllByRole("link")` (it's now plain text, not a link); new tests
+  for the two sub-items and the legacy-route visibility case (see
+  Tests, below).
+- `intent/changes/013-trade-screens.md` — `Status` → `done` once
+  implemented and verified.
+
+**Business rules implemented:** none — pure UI/navigation scaffolding,
+no data, no API calls.
+
+**Tests:**
+- Sidebar renders "Dashboard", "Logistics" and "Inventory" as links,
+  plus "Trades" as non-link text, while on a non-Trades,
+  non-Logistics route (e.g. `/`); no Trades or Logistics sub-items are
+  shown.
+- Sidebar renders "Trades" and "Approvals" nested under the Trades
+  header, in order, while on `/trades/trades` (and separately while on
+  `/trades`, the legacy list route), each linked to its own route.
+- Sidebar keeps the Trades sub-items visible while rendered directly
+  on `/trades/approvals` (proves visibility survives a refresh on a
+  sub-page) and while on a legacy `/trades/:id` detail route (proves
+  the existing Trades list/detail pages still expand the section even
+  though they're unlinked from the nav).
+- Clicking "Trades" (the sub-item) navigates to `/trades/trades` and
+  renders its title and "Coming soon" message; same for "Approvals" at
+  `/trades/approvals`.
+- Visiting either URL directly (not via a sidebar click) renders the
+  same placeholder — proves each has its own address and survives a
+  refresh.
+- The top-level "Trades" text is not a link (has no `href`/is not
+  queryable via `getByRole("link", { name: "Trades" })` at the
+  top level — only the sub-item "Trades" is).
+- The existing Trades list (`/trades`) and Trade detail/form
+  (`/trades/:id`, `/trades/new`) pages are unaffected — still render
+  exactly as before, still reachable by navigating to their URL
+  directly (simulating the existing Dashboard/Logistics links into
+  them), even with no sidebar entry pointing at them.
+
+**Manual check:** open the app on Dashboard and confirm Trades shows
+no sub-items and its label isn't clickable; click "Trades" (confirm
+nothing navigates) and confirm "Trades" and "Approvals" appear beneath
+it; click each and confirm a plain "Coming soon" placeholder with the
+right title, with the sub-items still visible; click "Logistics" or
+"Inventory" and confirm the Trades sub-items disappear again; follow
+an existing "View trade" link from the Dashboard into a trade detail
+page and confirm it still renders normally, with the Trades sub-items
+shown in the sidebar even though there's no nav link back to the list;
+refresh the browser directly on `/trades/approvals` and confirm both
+the page and the sidebar's sub-items still render correctly.
+
+---
