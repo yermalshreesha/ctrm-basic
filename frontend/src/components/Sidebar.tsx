@@ -10,19 +10,28 @@ interface NavItem {
   to: string;
   label: string;
   end?: boolean;
-  /** false means this entry has no page of its own — render it as a
-   *  plain section header instead of a link. Its `to` is still used as
-   *  the route prefix that decides when to show `children`. */
-  linkable?: boolean;
+  /** Route prefix that shows `children` and applies the section
+   *  highlight; defaults to `to`. Kept separate from `to` for Trades,
+   *  whose own link target (`/trades/trades`) is narrower than the
+   *  section it belongs to (`/trades`, which also covers the existing,
+   *  unlinked Trades list and detail pages). */
+  matchPrefix?: string;
+  /** true: once the current route is within this section, render this
+   *  entry as plain text instead of a link, since one of its own
+   *  `children` repeats the same label and would otherwise sit right
+   *  next to a duplicate link. Outside the section it stays a normal
+   *  link, so the section is still reachable from the sidebar. */
+  collapseWhenExpanded?: boolean;
   children?: NavChild[];
 }
 
 const links: NavItem[] = [
   { to: "/", label: "Dashboard", end: true },
   {
-    to: "/trades",
+    to: "/trades/trades",
     label: "Trades",
-    linkable: false,
+    matchPrefix: "/trades",
+    collapseWhenExpanded: true,
     children: [
       { to: "/trades/trades", label: "Trades" },
       { to: "/trades/approvals", label: "Approvals" },
@@ -47,14 +56,14 @@ export function Sidebar() {
       <div className="sidebar-title">CTRM</div>
       <ul>
         {links.map((link) => {
-          const isWithinSection = location.pathname.startsWith(link.to);
+          const prefix = link.matchPrefix ?? link.to;
+          const isWithinSection = location.pathname.startsWith(prefix);
+          const showAsPlainText = link.collapseWhenExpanded && isWithinSection;
 
           return (
             <li key={link.to}>
-              {link.linkable === false ? (
-                <span className={isWithinSection ? "sidebar-section-label active" : "sidebar-section-label"}>
-                  {link.label}
-                </span>
+              {showAsPlainText ? (
+                <span className="sidebar-section-label active">{link.label}</span>
               ) : (
                 <NavLink to={link.to} end={link.end} className={({ isActive }) => (isActive ? "active" : undefined)}>
                   {link.label}

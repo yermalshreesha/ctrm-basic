@@ -493,17 +493,24 @@ Trades is likewise a section with two sub-items — "Trades" and
 "Approvals" (own URLs, `/trades/trades` and `/trades/approvals`,
 placeholder content only — see below and
 `intent/changes/013-trade-screens.md`). Unlike Logistics, the
-top-level "Trades" label is **not** a link to a page of its own: the
-existing Trades list (filters, "New trade") is no longer reachable
-from the navigation, so the top-level entry is plain text that groups
-the two sub-items rather than linking anywhere — still an instance of
-standard 6's "instead of being a single flat link," so the standard
-itself needed no further change. The sub-items use the same
-route-derived visibility mechanism as Logistics's — shown while the
-current page is anywhere under `/trades` — which includes the existing
-(now unlinked) Trades list and Trade detail/form pages, not just the
-two new placeholders, so a direct link from the Dashboard or Logistics
-into a trade still shows the Trades section expanded. The existing
+top-level "Trades" label never links to the existing Trades list
+(filters, "New trade") — that list is no longer reachable from the
+navigation at all. Outside the Trades section, the top-level "Trades"
+label is a normal link to the new "Trades" placeholder (`/trades/
+trades`), so the section stays reachable from the sidebar; once inside
+the section it collapses to plain text instead, since the "Trades"
+sub-item directly beneath it would otherwise be a second, identically-
+labeled link to the same page. (An earlier revision made the top-level
+label permanently non-interactive, which left the section unreachable
+from the sidebar entirely — corrected after manual verification.) This
+is still an instance of standard 6's "instead of being a single flat
+link," so the standard itself needed no further change. The sub-items
+use the same route-derived visibility mechanism as Logistics's —
+shown while the current page is anywhere under `/trades` — which
+includes the existing (now unlinked) Trades list and Trade detail/form
+pages, not just the two new placeholders, so a direct link from the
+Dashboard or Logistics into a trade still shows the Trades section
+expanded. The existing
 Trades list and Trade detail/form pages are unchanged and not
 deleted; only their sidebar entry point is removed — they stay
 reachable via existing links (e.g. from the Dashboard and Logistics)
