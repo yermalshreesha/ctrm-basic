@@ -489,11 +489,42 @@ state. Counterparties and Warehouses are seed data in this version
 dropdown options, populated from `GET /api/counterparties` and `GET
 /api/warehouses`, on the Trade and Shipment forms.
 
+Trades is likewise a section with two sub-items — "Trades" and
+"Approvals" (own URLs, `/trades/trades` and `/trades/approvals`,
+placeholder content only — see below and
+`intent/changes/013-trade-screens.md`). Unlike Logistics, the
+top-level "Trades" label never links to the existing Trades list
+(filters, "New trade") — that list is no longer reachable from the
+navigation at all. Outside the Trades section, the top-level "Trades"
+label is a normal link to the new "Trades" placeholder
+(`/trades/trades`), so the section stays reachable from the sidebar;
+once inside the section it collapses to plain text instead, since the
+"Trades" sub-item directly beneath it would otherwise be a second,
+identically-labeled link to the same page. (An earlier revision made
+the top-level label permanently non-interactive, which left the
+section unreachable from the sidebar entirely — corrected after manual
+verification.) This
+is still an instance of standard 6's "instead of being a single flat
+link," so the standard itself needed no further change. The sub-items
+use the same route-derived visibility mechanism as Logistics's —
+shown while the current page is anywhere under `/trades` — which
+includes the existing (now unlinked) Trades list and Trade detail/form
+pages, not just the two new placeholders, so a direct link from the
+Dashboard or Logistics into a trade still shows the Trades section
+expanded. The existing
+Trades list and Trade detail/form pages are unchanged and not
+deleted; only their sidebar entry point is removed — they stay
+reachable via existing links (e.g. from the Dashboard and Logistics)
+and keep working exactly as before.
+
 - **Dashboard** — net position per commodity (bought MT − sold MT, one
   row per commodity); inventory by warehouse (table: warehouse ×
   commodity × MT); shipments in progress (table: trade, transport
   mode, origin → destination, status, planned dates).
-- **Trades (list)** — table of trades: commodity, direction, counterparty,
+- **Trades (list)** — no longer reachable from the sidebar navigation
+  as of `intent/changes/013-trade-screens.md`; reachable only via
+  existing direct links (e.g. from the Dashboard and Logistics).
+  Unchanged otherwise: table of trades: commodity, direction, counterparty,
   quantity, price, currency, delivery period, status; filters by
   status/commodity/direction/counterparty — the Counterparty dropdown
   sits after Direction, its options coming from `GET /api/counterparties`
@@ -542,6 +573,13 @@ dropdown options, populated from `GET /api/counterparties` and `GET
   Each has its own URL and survives a refresh. Distinct from the
   existing Logistics screen above, which is unchanged. Per
   `intent/changes/012-logistics-screens.md`; their real content is
+  deferred to a future change (see section 10).
+- **Trades** and **Approvals** — two placeholder screens under the
+  Trades section, each showing only its title and a short "Coming
+  soon" message; no data, no forms, no API calls. Each has its own URL
+  (`/trades/trades`, `/trades/approvals`) and survives a refresh.
+  Distinct from the existing Trades list above, which is unchanged.
+  Per `intent/changes/013-trade-screens.md`; their real content is
   deferred to a future change (see section 10).
 
 All table links use clear link text (e.g. "View trade", "View
@@ -666,6 +704,11 @@ stock"**
   empty placeholders in this version — no tables, filters, data, or
   actions. What each screen actually shows is deferred to a future
   change.
+- **Content of the Trades and Approvals placeholder screens.** Per
+  `intent/changes/013-trade-screens.md`, these two screens are empty
+  placeholders in this version — no tables, filters, data, or actions.
+  What each screen actually shows, including any approval workflow for
+  "Approvals," is deferred to a future change.
 
 ## 11. Deployment
 
