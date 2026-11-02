@@ -8,6 +8,9 @@ inventory, dashboard). Single user, no login, runs locally.
 - intent/spec.md: requirements and design decisions. Do not add
   features that are not in the spec.
 - intent/plan.md: the current implementation plan (once it exists)
+- Follow the intent-template skill when starting a new change. Never
+  set an intent's Status to done — only the person does, after merge
+  and verification.
 If the code needs to depart from the spec or plan, stop and ask.
 When the implementation changes the plan, update plan.md in the
 same commit.
