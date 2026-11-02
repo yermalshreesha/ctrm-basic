@@ -214,8 +214,9 @@ section 10)
 | currency | enum | USD, EUR, GBP — display only, no conversion |
 | deliveryPeriodStart | date | |
 | deliveryPeriodEnd | date | ≥ deliveryPeriodStart |
-| status | enum | DRAFT, CONFIRMED, COMPLETED, CANCELLED |
-| notes | string, nullable | optional free text, max 500 characters; editable only while status is DRAFT, like every other Trade field; whitespace-only input is trimmed and stored as `null` (BR-11) |
+| status | enum | DRAFT, PENDING_APPROVAL, CONFIRMED, COMPLETED, CANCELLED — `PENDING_APPROVAL` added by `intent/changes/014-trade-approvals.md` |
+| notes | string, nullable | optional free text, max 500 characters; editable only while status is DRAFT, like every other Trade field (unaffected by `PENDING_APPROVAL`'s addition — a trade stops being editable as soon as it leaves DRAFT, same as today); whitespace-only input is trimmed and stored as `null` (BR-11) |
+| approvedAt | timestamp, nullable | set when a `PENDING_APPROVAL` trade is approved (BR-12); stays `null` through DRAFT/PENDING_APPROVAL/rejection — a trade only ever reaches CONFIRMED by being approved, so there's no scenario where it needs clearing; no approver identity is recorded, since there's no login yet (`intent/changes/014-trade-approvals.md`) |
 | createdAt / updatedAt | timestamp | |
 
 ### Shipment
@@ -271,16 +272,24 @@ enforce standard 4 directly)
 
 ## 5. Status transitions
 
-### Trade: DRAFT → CONFIRMED → COMPLETED, and DRAFT/CONFIRMED → CANCELLED
+### Trade: DRAFT → PENDING_APPROVAL → CONFIRMED → COMPLETED, PENDING_APPROVAL → DRAFT (reject), and DRAFT/PENDING_APPROVAL/CONFIRMED → CANCELLED
+Reworked by `intent/changes/014-trade-approvals.md`: a DRAFT trade can no
+longer be confirmed directly — the only path to CONFIRMED is through
+PENDING_APPROVAL.
+
 | From | To | Allowed | Guard |
 |---|---|---|---|
-| DRAFT | CONFIRMED | yes | all required fields present and valid |
+| DRAFT | PENDING_APPROVAL | yes | all required fields present and valid — same guard `DRAFT → CONFIRMED` used before this change (BR-12) |
 | DRAFT | CANCELLED | yes | — |
+| PENDING_APPROVAL | CONFIRMED | yes | sets `approvedAt` to now (BR-12) |
+| PENDING_APPROVAL | DRAFT | yes | rejection — no guard; `approvedAt` stays unset; the trade becomes editable again and can be re-submitted (BR-12) |
+| PENDING_APPROVAL | CANCELLED | yes | — same as DRAFT → CANCELLED; no shipments can exist yet (shipments require a CONFIRMED trade), so BR-10's shipment check doesn't apply here |
 | CONFIRMED | COMPLETED | yes | every shipment on the trade is DELIVERED, and sum(shipment.quantityMt) == trade.quantityMt (BR-4) |
 | CONFIRMED | CANCELLED | yes | trade has **no shipments at all**, of any status (BR-10) — a PLANNED shipment must be deleted first (see the Shipment DELETE endpoint, section 7); once a shipment has left the warehouse or arrived (IN_TRANSIT/DELIVERED), it can never be deleted, so cancelling would require reversing inventory or discarding completed logistics, which is out of scope |
 | COMPLETED | * | no | terminal |
 | CANCELLED | * | no | terminal |
-| DRAFT | COMPLETED | no | must pass through CONFIRMED |
+| DRAFT | CONFIRMED | no | must pass through PENDING_APPROVAL (changed by `intent/changes/014-trade-approvals.md` — previously allowed directly) |
+| DRAFT | COMPLETED | no | must pass through PENDING_APPROVAL and CONFIRMED |
 
 ### Shipment: PLANNED → IN_TRANSIT → DELIVERED
 | From | To | Allowed | Guard |
@@ -375,7 +384,9 @@ clear message naming the current status and the attempted status
   never a full timestamp.
 - **BR-7 (status transitions are whitelisted).** Only the transitions
   listed in section 5 are permitted; every other transition is
-  rejected with an error naming both statuses. (Standard 3)
+  rejected with an error naming both statuses. (Standard 3) Extended by
+  `intent/changes/014-trade-approvals.md` to add the `PENDING_APPROVAL`
+  status and its transitions — see BR-12.
 - **BR-8 (a shipment's warehouse+commodity is implied by its trade).**
   A Shipment doesn't store its own commodityId — it's read from
   `shipment.trade.commodityId` — so a shipment can never disagree with
@@ -408,6 +419,19 @@ clear message naming the current status and the attempted status
   is DRAFT; once CONFIRMED, COMPLETED or CANCELLED it is read-only.
   No note history is kept, and shipments have no notes field of their
   own (both out of scope — see section 10).
+- **BR-12 (trade approval workflow).** Per
+  `intent/changes/014-trade-approvals.md`: a DRAFT trade can be
+  submitted for approval (`POST /api/trades/:id/submit-for-approval`),
+  moving it to PENDING_APPROVAL under the same required-fields guard
+  `DRAFT → CONFIRMED` used before this change. A PENDING_APPROVAL trade
+  can be approved (`POST /api/trades/:id/approve`), moving it to
+  CONFIRMED and setting `approvedAt` to the current time, or rejected
+  (`POST /api/trades/:id/reject`), moving it back to DRAFT so it can be
+  edited and resubmitted. A DRAFT trade can no longer be confirmed
+  directly — the `confirm` endpoint is removed; the only path to
+  CONFIRMED is submit-for-approval followed by approve. Who may approve
+  is out of scope (no login yet — anyone can approve), as are approval
+  history/comments and notifications.
 
 ## 7. API endpoints
 
@@ -434,9 +458,17 @@ Warehouse in this version; rows come from a seed script. See section
 - `POST /api/trades` — create (status defaults to DRAFT)
 - `GET /api/trades/:id` — includes its shipments
 - `PATCH /api/trades/:id` — edit fields, only while status is DRAFT
-- `POST /api/trades/:id/confirm` — DRAFT → CONFIRMED
+- `POST /api/trades/:id/submit-for-approval` — DRAFT → PENDING_APPROVAL
+  (BR-12; replaces the old direct `confirm` endpoint, removed by
+  `intent/changes/014-trade-approvals.md`)
+- `POST /api/trades/:id/approve` — PENDING_APPROVAL → CONFIRMED, sets
+  `approvedAt` (BR-12)
+- `POST /api/trades/:id/reject` — PENDING_APPROVAL → DRAFT (BR-12)
 - `POST /api/trades/:id/complete` — CONFIRMED → COMPLETED (BR-4 checked)
-- `POST /api/trades/:id/cancel` — DRAFT/CONFIRMED → CANCELLED (BR-10 checked: a CONFIRMED trade must have no shipments at all, of any status)
+- `POST /api/trades/:id/cancel` — DRAFT/PENDING_APPROVAL/CONFIRMED →
+  CANCELLED (BR-10 checked only for CONFIRMED: it must have no
+  shipments at all, of any status; DRAFT and PENDING_APPROVAL can
+  never have shipments, so no check is needed there)
 
 ### Shipments
 - `GET /api/shipments` — list, filterable by `status`, `tradeId`, `warehouseId`
@@ -491,8 +523,9 @@ dropdown options, populated from `GET /api/counterparties` and `GET
 
 Trades is likewise a section with two sub-items — "Trades" and
 "Approvals" (own URLs, `/trades/trades` and `/trades/approvals`,
-placeholder content only — see below and
-`intent/changes/013-trade-screens.md`). Unlike Logistics, the
+originally placeholder content only per
+`intent/changes/013-trade-screens.md`; "Approvals" gained real content
+in `intent/changes/014-trade-approvals.md` — see below). Unlike Logistics, the
 top-level "Trades" label never links to the existing Trades list
 (filters, "New trade") — that list is no longer reachable from the
 navigation at all. Outside the Trades section, the top-level "Trades"
@@ -526,7 +559,8 @@ and keep working exactly as before.
   existing direct links (e.g. from the Dashboard and Logistics).
   Unchanged otherwise: table of trades: commodity, direction, counterparty,
   quantity, price, currency, delivery period, status; filters by
-  status/commodity/direction/counterparty — the Counterparty dropdown
+  status/commodity/direction/counterparty — the status filter's options
+  gain `PENDING_APPROVAL` per `intent/changes/014-trade-approvals.md` — the Counterparty dropdown
   sits after Direction, its options coming from `GET /api/counterparties`
   plus "All" (the default), per `intent/changes/006-counterparty-filters.md`;
   "New trade" button. A "Clear filters" button sits alongside the filters
@@ -535,18 +569,24 @@ and keep working exactly as before.
   again — per `intent/changes/004-clear-filters.md`, extended to the
   counterparty filter by `intent/changes/006-counterparty-filters.md`.
 - **Trade detail / form** — all Trade fields; while DRAFT, fields are
-  editable and Confirm/Cancel actions are shown; while CONFIRMED, shows
-  Complete/Cancel actions and the list of linked shipments (with a
-  link to add a new shipment); while COMPLETED/CANCELLED, read-only.
-  A Cancel action on a CONFIRMED trade with any shipments (PLANNED,
-  IN_TRANSIT or DELIVERED) is disabled/rejected per BR-10, with a
-  message naming them; a PLANNED one must be deleted (via the Shipment
-  detail screen's Delete action) before the trade can be cancelled.
-  Validation errors appear next to the relevant field (standard 6).
-  The optional `notes` field (free text, up to 500 characters) is
-  editable alongside the other DRAFT fields and shown read-only
-  afterward; it is not shown on the Trades list table (detail page
-  only, per product owner decision).
+  editable and "Submit for approval"/Cancel actions are shown (per
+  `intent/changes/014-trade-approvals.md`, replacing the old direct
+  Confirm action); while PENDING_APPROVAL, read-only (same as
+  CONFIRMED/COMPLETED/CANCELLED below) with only a Cancel action shown
+  — Approve/Reject are not available from this page, only from the
+  Approvals screen; while CONFIRMED, shows Complete/Cancel actions and
+  the list of linked shipments (with a link to add a new shipment);
+  while COMPLETED/CANCELLED, read-only with no actions. A Cancel action
+  on a CONFIRMED trade with any shipments (PLANNED, IN_TRANSIT or
+  DELIVERED) is disabled/rejected per BR-10, with a message naming
+  them; a PLANNED one must be deleted (via the Shipment detail
+  screen's Delete action) before the trade can be cancelled. (A
+  PENDING_APPROVAL trade can never have shipments, so its Cancel action
+  is never blocked.) Validation errors appear next to the relevant
+  field (standard 6). The optional `notes` field (free text, up to 500
+  characters) is editable alongside the other DRAFT fields and shown
+  read-only from PENDING_APPROVAL onward; it is not shown on the Trades
+  list table (detail page only, per product owner decision).
 - **Logistics (list)** — table of shipments across all trades: trade
   (linked), commodity, warehouse, transport mode, origin, destination,
   planned/actual dates, status; filters by status/warehouse. A "Clear
@@ -574,13 +614,25 @@ and keep working exactly as before.
   existing Logistics screen above, which is unchanged. Per
   `intent/changes/012-logistics-screens.md`; their real content is
   deferred to a future change (see section 10).
-- **Trades** and **Approvals** — two placeholder screens under the
-  Trades section, each showing only its title and a short "Coming
-  soon" message; no data, no forms, no API calls. Each has its own URL
-  (`/trades/trades`, `/trades/approvals`) and survives a refresh.
-  Distinct from the existing Trades list above, which is unchanged.
-  Per `intent/changes/013-trade-screens.md`; their real content is
-  deferred to a future change (see section 10).
+- **Trades** — placeholder screen under the Trades section
+  (`/trades/trades`), showing only its title and a short "Coming soon"
+  message; no data, no forms, no API calls. Distinct from the existing
+  Trades list above, which is unchanged. Per
+  `intent/changes/013-trade-screens.md`; its real content is deferred
+  to a future change (see section 10).
+- **Approvals** (`/trades/approvals`) — gets real content per
+  `intent/changes/014-trade-approvals.md`, replacing the placeholder
+  from `intent/changes/013-trade-screens.md`: a table of every trade
+  currently PENDING_APPROVAL, in the same table style and columns as
+  the Trades list (commodity, direction, counterparty, quantity,
+  price, currency, delivery period, status), plus a "View trade" link
+  and "Approve"/"Reject" actions on each row. Approve and Reject each
+  ask for confirmation first, the same pattern as Confirm/Cancel on the
+  Trade detail page. Approving calls `POST /api/trades/:id/approve`
+  and removes the row from the list (the trade is now CONFIRMED, no
+  longer PENDING_APPROVAL); rejecting calls `POST
+  /api/trades/:id/reject` and likewise removes the row (the trade is
+  now DRAFT). No filters, since every row is already PENDING_APPROVAL.
 
 All table links use clear link text (e.g. "View trade", "View
 shipment"), never a raw id or an unrelated data value repurposed as
@@ -681,6 +733,29 @@ stock"**
   after Clear filters is clicked), the "Clear filters" button is not
   shown.
 
+**"Trades must be approved before they become active"**
+(`intent/changes/014-trade-approvals.md`)
+- AC-18: Submitting a DRAFT trade for approval transitions it to
+  PENDING_APPROVAL; submitting a trade that isn't DRAFT is rejected
+  with a 409 naming both statuses (BR-12).
+- AC-19: Approving a PENDING_APPROVAL trade transitions it to
+  CONFIRMED and sets `approvedAt` to the current time; approving a
+  trade that isn't PENDING_APPROVAL is rejected with a 409 (BR-12).
+- AC-20: Rejecting a PENDING_APPROVAL trade transitions it back to
+  DRAFT, `approvedAt` stays unset, and the trade can then be edited
+  (`PATCH`) and submitted for approval again; rejecting a trade that
+  isn't PENDING_APPROVAL is rejected with a 409 (BR-12).
+- AC-21: A DRAFT trade can no longer be confirmed directly — there is
+  no `confirm` endpoint; the only path from DRAFT to CONFIRMED is
+  submit-for-approval followed by approve.
+- AC-22: Cancelling a PENDING_APPROVAL trade succeeds and transitions
+  it to CANCELLED, with no shipment check (BR-10 only applies from
+  CONFIRMED), same as cancelling a DRAFT trade.
+- AC-23: The Approvals screen lists exactly the trades currently
+  PENDING_APPROVAL, matching `GET /api/trades?status=PENDING_APPROVAL`;
+  approving or rejecting a row removes it from the list without a page
+  refresh.
+
 ## 10. Out of scope / future intent
 
 - **Editable Counterparty and Warehouse lists.** Decision 3 (section
@@ -704,11 +779,23 @@ stock"**
   empty placeholders in this version — no tables, filters, data, or
   actions. What each screen actually shows is deferred to a future
   change.
-- **Content of the Trades and Approvals placeholder screens.** Per
-  `intent/changes/013-trade-screens.md`, these two screens are empty
-  placeholders in this version — no tables, filters, data, or actions.
-  What each screen actually shows, including any approval workflow for
-  "Approvals," is deferred to a future change.
+- **Content of the Trades placeholder screen.** Per
+  `intent/changes/013-trade-screens.md`, the "Trades" sub-item under
+  the Trades section is still an empty placeholder in this version —
+  no table, filters, data, or actions. What it actually shows is
+  deferred to a future change. (The "Approvals" sub-item is no longer
+  a placeholder — see section 8 and `intent/changes/014-trade-approvals.md`.)
+- **Who may approve a trade.** Per
+  `intent/changes/014-trade-approvals.md`: there is no login yet, so
+  anyone can approve or reject any trade; approver identity is never
+  recorded.
+- **Approval history or comments.** Per
+  `intent/changes/014-trade-approvals.md`: only the current
+  `approvedAt` timestamp is kept (when set); no log of past
+  submissions, rejections, or reasons.
+- **Notifications on submission, approval or rejection.** Per
+  `intent/changes/014-trade-approvals.md`: none of these actions
+  notify anyone; the Approvals screen must be checked manually.
 
 ## 11. Deployment
 

@@ -2324,3 +2324,166 @@ Trades placeholders' content, and the existing Trades list/detail
 pages were all unaffected by either the bug or the fix.
 
 ---
+
+## Phase 27 — Change 014: Trade approval workflow
+
+**Goal:** add a new `PENDING_APPROVAL` status between DRAFT and
+CONFIRMED, so a trade must be submitted for approval and then approved
+(or rejected back to DRAFT) before it can become CONFIRMED — a DRAFT
+trade can no longer be confirmed directly. The Approvals screen
+(placeholder since Phase 26 / change 013) gets its real content: a
+table of every PENDING_APPROVAL trade with Approve/Reject actions. Per
+`intent/changes/014-trade-approvals.md`.
+
+**Decisions confirmed with the product owner for this phase
+(2026-11-02), resolving the change doc's "Open questions," recorded in
+spec.md §4-§6:**
+- A PENDING_APPROVAL trade **can** be cancelled, the same as a DRAFT
+  trade (→ CANCELLED, no shipment check — PENDING_APPROVAL can never
+  have shipments, since shipments require a CONFIRMED trade).
+- Notes stay editable **only in DRAFT**, as today (BR-11 unchanged) —
+  PENDING_APPROVAL is read-only for notes and every other field, same
+  as CONFIRMED/COMPLETED/CANCELLED.
+- The trade records **only `approvedAt`** (nullable timestamp, set when
+  approved) — no approver identity, since there's no login yet.
+
+**Files:**
+- `intent/spec.md` — §4 (Trade: new `PENDING_APPROVAL` status value,
+  new `approvedAt` field); §5 (Trade transition table reworked:
+  DRAFT→PENDING_APPROVAL, PENDING_APPROVAL→CONFIRMED/DRAFT/CANCELLED,
+  DRAFT→CONFIRMED now disallowed); §6 (BR-7 note, new BR-12); §7
+  (`confirm` endpoint removed, new `submit-for-approval`/`approve`/
+  `reject` endpoints, `cancel` allows PENDING_APPROVAL); §8 (Trade
+  detail/form actions, Trades list status filter option, Approvals
+  screen's real content replacing its placeholder description); §9
+  (new AC-18 through AC-23); §10 (out-of-scope bullets: who may
+  approve, approval history/comments, notifications; Trades/Approvals
+  placeholder bullet split since Approvals is no longer one). Already
+  updated as part of drafting this phase.
+- `backend/prisma/schema.prisma` — `TradeStatus` enum gains
+  `PENDING_APPROVAL` (after `DRAFT`, before `CONFIRMED`, matching
+  spec.md's ordering); `Trade` model gains `approvedAt DateTime?`.
+- `backend/prisma/migrations/<timestamp>_add_trade_pending_approval/` —
+  hand-written migration (same pattern as decision 5's rename
+  migration): `ALTER TYPE "TradeStatus" ADD VALUE 'PENDING_APPROVAL'`
+  plus `ALTER TABLE "Trade" ADD COLUMN "approvedAt" TIMESTAMP(3)`.
+  Purely additive — no existing `Trade` row's `status` or data changes,
+  matching section 11's expand/contract rule.
+- `backend/src/modules/trades/schema.ts` — `listTradesQuerySchema`'s
+  `status` filter enum gains `PENDING_APPROVAL` (no new input schema
+  needed for submit/approve/reject — all three take an empty body, same
+  as the old `confirm`).
+- `backend/src/modules/trades/service.ts` — `confirmTrade` renamed to
+  `submitTradeForApproval` (same DRAFT-only guard it already had, now
+  transitioning to `PENDING_APPROVAL` instead of `CONFIRMED`); new
+  `approveTrade` (PENDING_APPROVAL → CONFIRMED, sets
+  `approvedAt: new Date()`) and `rejectTrade` (PENDING_APPROVAL →
+  DRAFT) following the same `Result<T>`/`invalidTransition` shape as
+  the existing functions; `cancelTrade`'s allowed-from check extended
+  from `"DRAFT" || "CONFIRMED"` to also include `"PENDING_APPROVAL"`
+  (routed through the same no-shipment-check branch as DRAFT, not
+  CONFIRMED's BR-10 branch).
+- `backend/src/modules/trades/routes.ts` — `/:id/confirm` route
+  replaced by `/:id/submit-for-approval`, `/:id/approve`, `/:id/reject`
+  (same `idParamSchema` → service call → `Result` pattern as the
+  existing action routes).
+- `backend/test/trades.test.ts` — existing tests exercising
+  DRAFT→CONFIRMED via `/confirm` are rewritten to the new
+  submit-for-approval→approve flow (the change doc's "existing tests
+  about confirming Draft trades must be updated to the new flow" —
+  this is part of change 014 itself, not a separate `fix/` branch);
+  new tests added for: submit-for-approval (DRAFT→PENDING_APPROVAL,
+  rejecting non-DRAFT), approve (PENDING_APPROVAL→CONFIRMED + sets
+  `approvedAt`, rejecting non-PENDING_APPROVAL), reject
+  (PENDING_APPROVAL→DRAFT, `approvedAt` stays null, re-editable and
+  re-submittable), cancelling a PENDING_APPROVAL trade, and confirming
+  `POST /api/trades/:id/confirm` no longer exists (404/405).
+- `frontend/src/api/types.ts` — `TradeStatus` union gains
+  `"PENDING_APPROVAL"`; `Trade`/`TradeWithShipments` gain
+  `approvedAt: string | null`.
+- `frontend/src/pages/TradeDetail.tsx` — `handleConfirm` renamed to
+  `handleSubmitForApproval` (posts to `/submit-for-approval`); the
+  DRAFT actions row's "Confirm" button becomes "Submit for approval";
+  a new `trade.status === "PENDING_APPROVAL"` branch renders the
+  existing read-only `<dl>` summary (same as CONFIRMED/COMPLETED/
+  CANCELLED today) with only a Cancel action in the actions row — no
+  Submit/Approve/Reject on this page, per the product owner's decision
+  that approve/reject only happens from the Approvals screen.
+- `frontend/src/pages/Trades.tsx` — `STATUSES` array gains
+  `"PENDING_APPROVAL"`.
+- `frontend/src/pages/Approvals.tsx` — rewritten from the static
+  placeholder (title + "Coming soon") to a live page: fetches `GET
+  /api/trades?status=PENDING_APPROVAL` (same `apiClient`/commodity/
+  counterparty name-lookup pattern as `Trades.tsx`), renders a
+  `data-table` with the same columns as the Trades list plus "View
+  trade" (`Link` to `/trades/:id`) and "Approve"/"Reject" buttons; each
+  action asks for confirmation via `window.confirm` (same pattern as
+  `TradeDetail.tsx`'s `handleCancel`/`handleComplete`), calls `POST
+  /trades/:id/approve` or `/reject`, and removes the row from local
+  state on success rather than refetching the whole list.
+- `frontend/test/TradeDetail.test.tsx` — "Confirm" button tests become
+  "Submit for approval" tests; new tests for the PENDING_APPROVAL
+  read-only view showing only a Cancel action.
+- `frontend/test/Trades.test.tsx` — status filter's option list
+  includes "PENDING_APPROVAL".
+- `frontend/test/Approvals.test.tsx` — new file: renders only
+  PENDING_APPROVAL trades from the fetched list; "View trade" link
+  points at the right trade; Approve/Reject each prompt for
+  confirmation and, once confirmed, call the right endpoint and remove
+  the row; declining the confirmation leaves the row in place and calls
+  no endpoint; an empty PENDING_APPROVAL list renders the table with no
+  rows (no "Coming soon" message, since this is no longer a
+  placeholder).
+- `intent/changes/014-trade-approvals.md` — `Status` → `done` once
+  implemented and verified.
+
+**Business rules implemented:** BR-12 (trade approval workflow:
+submit-for-approval, approve, reject — replacing direct confirm); BR-7
+extended (new `PENDING_APPROVAL` status and its transitions added to
+the whitelist). BR-10 and BR-11 are unaffected (BR-10 still only
+guards CONFIRMED→CANCELLED; BR-11 still only allows notes edits in
+DRAFT) — covered here only by regression tests proving they didn't
+change.
+
+**Tests:**
+- Submit-for-approval: a DRAFT trade with valid fields →
+  PENDING_APPROVAL; a DRAFT trade missing/invalid required fields is
+  rejected (same guard `confirmTrade` used); submitting a non-DRAFT
+  trade (PENDING_APPROVAL, CONFIRMED, COMPLETED, CANCELLED) is rejected
+  with 409 naming both statuses.
+- Approve: a PENDING_APPROVAL trade → CONFIRMED, with `approvedAt` set
+  to (approximately) now; approving a non-PENDING_APPROVAL trade is
+  rejected with 409.
+- Reject: a PENDING_APPROVAL trade → DRAFT, `approvedAt` stays `null`;
+  the rejected trade can then be `PATCH`ed and submitted for approval
+  again; rejecting a non-PENDING_APPROVAL trade is rejected with 409.
+- `POST /api/trades/:id/confirm` no longer exists.
+- Cancel: a PENDING_APPROVAL trade → CANCELLED succeeds with no
+  shipment check (mirrors the existing DRAFT→CANCELLED test); DRAFT and
+  CONFIRMED cancellation behavior (including BR-10) is unchanged —
+  regression-tested, not re-derived.
+- `GET /api/trades?status=PENDING_APPROVAL` returns only
+  PENDING_APPROVAL trades.
+- Notes: a PENDING_APPROVAL trade's `notes` cannot be changed via
+  `PATCH` (same rejection as CONFIRMED/COMPLETED/CANCELLED today) —
+  regression test proving BR-11 didn't loosen.
+- Frontend: Trade detail page shows "Submit for approval" (not
+  "Confirm") on a DRAFT trade, and shows the read-only summary with
+  only a Cancel action on a PENDING_APPROVAL trade; the Trades list's
+  status filter offers "PENDING_APPROVAL"; the Approvals page renders
+  only PENDING_APPROVAL trades with working Approve/Reject actions
+  (each gated on confirmation) that remove the row on success.
+
+**Manual check:** create a trade, submit it for approval from its
+detail page (confirm "Submit for approval" replaces "Confirm" and the
+trade becomes read-only except for a Cancel action), open Approvals and
+confirm it's listed; click Approve, confirm the dialog, and verify the
+row disappears from Approvals and the trade's detail page now shows
+CONFIRMED with Complete/Cancel actions; create and submit a second
+trade, Reject it from Approvals, and verify it disappears from
+Approvals and its detail page shows it back as an editable DRAFT that
+can be edited and submitted again; create and submit a third trade and
+cancel it directly from its detail page while PENDING_APPROVAL,
+confirming it moves to CANCELLED.
+
+---
