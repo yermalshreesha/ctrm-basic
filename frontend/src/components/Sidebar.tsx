@@ -11,17 +11,11 @@ interface NavItem {
   label: string;
   end?: boolean;
   /** Route prefix that shows `children` and applies the section
-   *  highlight; defaults to `to`. Kept separate from `to` for Trades,
+   *  highlight; defaults to `to`. Kept separate from `to` for Contracts,
    *  whose own link target (`/trades/trades`) is narrower than the
-   *  section it belongs to (`/trades`, which also covers the existing,
-   *  unlinked Trades list and detail pages). */
+   *  section it belongs to (`/trades`, which also covers the Trade
+   *  detail/create pages, `/trades/:id` and `/trades/new`). */
   matchPrefix?: string;
-  /** true: once the current route is within this section, render this
-   *  entry as plain text instead of a link, since one of its own
-   *  `children` repeats the same label and would otherwise sit right
-   *  next to a duplicate link. Outside the section it stays a normal
-   *  link, so the section is still reachable from the sidebar. */
-  collapseWhenExpanded?: boolean;
   children?: NavChild[];
 }
 
@@ -29,9 +23,8 @@ const links: NavItem[] = [
   { to: "/", label: "Dashboard", end: true },
   {
     to: "/trades/trades",
-    label: "Trades",
+    label: "Contracts",
     matchPrefix: "/trades",
-    collapseWhenExpanded: true,
     children: [
       { to: "/trades/trades", label: "Trades" },
       { to: "/trades/approvals", label: "Approvals" },
@@ -58,23 +51,17 @@ export function Sidebar() {
         {links.map((link) => {
           const prefix = link.matchPrefix ?? link.to;
           const isWithinSection = location.pathname.startsWith(prefix);
-          const showAsPlainText = link.collapseWhenExpanded && isWithinSection;
 
           return (
             <li key={link.to}>
-              {showAsPlainText ? (
-                <span className="sidebar-section-label active">{link.label}</span>
-              ) : (
-                <NavLink to={link.to} end={link.end} className={({ isActive }) => (isActive ? "active" : undefined)}>
-                  {link.label}
-                </NavLink>
-              )}
+              <NavLink to={link.to} end={link.end} className={({ isActive }) => (isActive ? "active" : undefined)}>
+                {link.label}
+              </NavLink>
               {/* Sub-items show only while the current page is under this
                   section (e.g. /logistics/..., /trades/...) — derived from
                   the route, not a separate click-to-toggle state, so a
-                  direct link or refresh into a sub-page (or, for Trades, the
-                  existing unlinked list/detail pages) shows them correctly
-                  too. */}
+                  direct link or refresh into a sub-page (e.g. a Trade
+                  detail/create page) shows them correctly too. */}
               {link.children && isWithinSection && (
                 <ul className="sidebar-sublist">
                   {link.children.map((child) => (

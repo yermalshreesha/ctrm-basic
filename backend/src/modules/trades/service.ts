@@ -195,12 +195,39 @@ export async function patchTrade(id: string, input: PatchTradeInput): Promise<Re
   return { ok: true, data: updated };
 }
 
-export async function confirmTrade(id: string): Promise<Result<Prisma.TradeGetPayload<object>>> {
+// BR-12: a DRAFT trade can be submitted for approval; the only path from
+// there to CONFIRMED is approveTrade, below — a DRAFT trade can no longer
+// be confirmed directly.
+export async function submitTradeForApproval(id: string): Promise<Result<Prisma.TradeGetPayload<object>>> {
   const trade = await getTradeById(id);
   if (!trade) return notFound(`Trade ${id} not found`);
-  if (trade.status !== "DRAFT") return invalidTransition(trade.status, "CONFIRMED");
+  if (trade.status !== "DRAFT") return invalidTransition(trade.status, "PENDING_APPROVAL");
 
-  const updated = await prisma.trade.update({ where: { id }, data: { status: "CONFIRMED" } });
+  const updated = await prisma.trade.update({ where: { id }, data: { status: "PENDING_APPROVAL" } });
+  return { ok: true, data: updated };
+}
+
+// BR-12: approving sets approvedAt (no approver identity — no login yet).
+export async function approveTrade(id: string): Promise<Result<Prisma.TradeGetPayload<object>>> {
+  const trade = await getTradeById(id);
+  if (!trade) return notFound(`Trade ${id} not found`);
+  if (trade.status !== "PENDING_APPROVAL") return invalidTransition(trade.status, "CONFIRMED");
+
+  const updated = await prisma.trade.update({
+    where: { id },
+    data: { status: "CONFIRMED", approvedAt: new Date() },
+  });
+  return { ok: true, data: updated };
+}
+
+// BR-12: rejecting returns the trade to DRAFT so it can be edited and
+// resubmitted; approvedAt is never set on this path.
+export async function rejectTrade(id: string): Promise<Result<Prisma.TradeGetPayload<object>>> {
+  const trade = await getTradeById(id);
+  if (!trade) return notFound(`Trade ${id} not found`);
+  if (trade.status !== "PENDING_APPROVAL") return invalidTransition(trade.status, "DRAFT");
+
+  const updated = await prisma.trade.update({ where: { id }, data: { status: "DRAFT" } });
   return { ok: true, data: updated };
 }
 
@@ -272,7 +299,7 @@ export async function cancelTrade(id: string): Promise<Result<Prisma.TradeGetPay
       await tx.$queryRaw`SELECT id FROM "Trade" WHERE id = ${id} FOR UPDATE`;
       const trade = await tx.trade.findUnique({ where: { id } });
       if (!trade) throw new TradeMissingInTransaction(id);
-      if (trade.status !== "DRAFT" && trade.status !== "CONFIRMED") {
+      if (trade.status !== "DRAFT" && trade.status !== "PENDING_APPROVAL" && trade.status !== "CONFIRMED") {
         throw new InvalidTransitionInTransaction(trade.status, "CANCELLED");
       }
 

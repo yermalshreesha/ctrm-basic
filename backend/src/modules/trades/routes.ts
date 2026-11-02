@@ -8,14 +8,16 @@ import {
   patchTradeSchema,
 } from "./schema.js";
 import {
+  approveTrade,
   cancelTrade,
   completeTrade,
-  confirmTrade,
   createTrade,
   getTradeByIdWithShipments,
   listTrades,
   patchTrade,
+  rejectTrade,
   serializeTrade,
+  submitTradeForApproval,
 } from "./service.js";
 
 export const tradesRouter = Router();
@@ -110,7 +112,7 @@ tradesRouter.patch(
 );
 
 tradesRouter.post(
-  "/:id/confirm",
+  "/:id/submit-for-approval",
   asyncHandler(async (req, res) => {
     const parsedId = idParamSchema.safeParse(req.params);
     if (!parsedId.success) {
@@ -118,7 +120,45 @@ tradesRouter.post(
       return;
     }
 
-    const result = await confirmTrade(parsedId.data.id);
+    const result = await submitTradeForApproval(parsedId.data.id);
+    if (!result.ok) {
+      res.status(result.status).json(result.body);
+      return;
+    }
+
+    res.status(200).json(serializeTrade(result.data));
+  }),
+);
+
+tradesRouter.post(
+  "/:id/approve",
+  asyncHandler(async (req, res) => {
+    const parsedId = idParamSchema.safeParse(req.params);
+    if (!parsedId.success) {
+      res.status(400).json(formatZodError(parsedId.error));
+      return;
+    }
+
+    const result = await approveTrade(parsedId.data.id);
+    if (!result.ok) {
+      res.status(result.status).json(result.body);
+      return;
+    }
+
+    res.status(200).json(serializeTrade(result.data));
+  }),
+);
+
+tradesRouter.post(
+  "/:id/reject",
+  asyncHandler(async (req, res) => {
+    const parsedId = idParamSchema.safeParse(req.params);
+    if (!parsedId.success) {
+      res.status(400).json(formatZodError(parsedId.error));
+      return;
+    }
+
+    const result = await rejectTrade(parsedId.data.id);
     if (!result.ok) {
       res.status(result.status).json(result.body);
       return;

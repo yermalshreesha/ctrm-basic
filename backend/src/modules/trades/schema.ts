@@ -86,7 +86,7 @@ export const patchTradeSchema = z.object({
 });
 
 export const listTradesQuerySchema = z.object({
-  status: z.enum(["DRAFT", "CONFIRMED", "COMPLETED", "CANCELLED"]).optional(),
+  status: z.enum(["DRAFT", "PENDING_APPROVAL", "CONFIRMED", "COMPLETED", "CANCELLED"]).optional(),
   commodityId: z.string().uuid({ message: "must be a valid UUID" }).optional(),
   direction: z.enum(["BUY", "SELL"]).optional(),
   counterpartyId: z.string().uuid({ message: "must be a valid UUID" }).optional(),

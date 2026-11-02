@@ -143,8 +143,11 @@ export function TradeDetail() {
       .finally(() => setSubmitting(false));
   }
 
-  function handleConfirm() {
-    runAction(() => apiClient.post(`/trades/${id}/confirm`), "Failed to confirm trade");
+  function handleSubmitForApproval() {
+    runAction(
+      () => apiClient.post(`/trades/${id}/submit-for-approval`),
+      "Failed to submit trade for approval",
+    );
   }
 
   function handleCancel() {
@@ -242,13 +245,18 @@ export function TradeDetail() {
       <div className="actions">
         {trade.status === "DRAFT" && (
           <>
-            <button onClick={handleConfirm} disabled={submitting} className="btn btn-primary">
-              Confirm
+            <button onClick={handleSubmitForApproval} disabled={submitting} className="btn btn-primary">
+              Submit for approval
             </button>
             <button onClick={handleCancel} disabled={submitting} className="btn btn-secondary">
               Cancel
             </button>
           </>
+        )}
+        {trade.status === "PENDING_APPROVAL" && (
+          <button onClick={handleCancel} disabled={submitting} className="btn btn-secondary">
+            Cancel
+          </button>
         )}
         {trade.status === "CONFIRMED" && (
           <>

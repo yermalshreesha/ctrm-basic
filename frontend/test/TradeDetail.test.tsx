@@ -21,6 +21,7 @@ function buildTrade(overrides: Partial<TradeWithShipments> = {}): TradeWithShipm
     deliveryPeriodEnd: "2026-02-20",
     status: "DRAFT",
     notes: null,
+    approvedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     shipments: [],
@@ -60,24 +61,36 @@ describe("TradeDetail", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows Confirm and Cancel (not Complete) for a DRAFT trade", async () => {
+  it("shows Submit for approval and Cancel (not Complete) for a DRAFT trade", async () => {
     mockFetch(buildTrade({ status: "DRAFT" }));
     renderDetail("t1");
     await waitForLoaded();
 
-    expect(screen.getByRole("button", { name: "Confirm" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit for approval" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Complete" })).not.toBeInTheDocument();
   });
 
-  it("shows Complete and Cancel (not Confirm) for a CONFIRMED trade", async () => {
+  it("shows only Cancel (no Submit/Approve/Reject) for a PENDING_APPROVAL trade", async () => {
+    mockFetch(buildTrade({ status: "PENDING_APPROVAL" }));
+    renderDetail("t1");
+    await waitForLoaded();
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Submit for approval" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Complete" })).not.toBeInTheDocument();
+  });
+
+  it("shows Complete and Cancel (not Submit for approval) for a CONFIRMED trade", async () => {
     mockFetch(buildTrade({ status: "CONFIRMED" }));
     renderDetail("t1");
     await waitForLoaded();
 
     expect(screen.getByRole("button", { name: "Complete" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Submit for approval" })).not.toBeInTheDocument();
   });
 
   it("shows no action buttons for a COMPLETED trade", async () => {
@@ -85,19 +98,19 @@ describe("TradeDetail", () => {
     renderDetail("t1");
     await waitForLoaded();
 
-    expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Submit for approval" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Complete" })).not.toBeInTheDocument();
   });
 
-  it("confirming a DRAFT trade calls confirm, refetches, and shows CONFIRMED", async () => {
+  it("submitting a DRAFT trade for approval calls submit-for-approval, refetches, and shows PENDING_APPROVAL", async () => {
     let status: TradeStatus = "DRAFT";
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       if (url === "/api/commodities" || url === "/api/counterparties") return jsonResponse(200, []);
       if (url === "/api/trades/t1" && method === "GET") return jsonResponse(200, buildTrade({ status }));
-      if (url === "/api/trades/t1/confirm" && method === "POST") {
-        status = "CONFIRMED";
+      if (url === "/api/trades/t1/submit-for-approval" && method === "POST") {
+        status = "PENDING_APPROVAL";
         return jsonResponse(200, buildTrade({ status }));
       }
       throw new Error(`Unexpected fetch: ${method} ${url}`);
@@ -107,9 +120,9 @@ describe("TradeDetail", () => {
     renderDetail("t1");
     await waitForLoaded();
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit for approval" }));
 
-    await waitFor(() => expect(screen.getByText("CONFIRMED")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PENDING_APPROVAL")).toBeInTheDocument());
 
     const getCalls = fetchMock.mock.calls.filter(
       ([u, i]) => u === "/api/trades/t1" && ((i as RequestInit | undefined)?.method ?? "GET") === "GET",
@@ -227,15 +240,15 @@ describe("TradeDetail", () => {
 
   it("disables action buttons while a request is running", async () => {
     let status: TradeStatus = "DRAFT";
-    let resolveConfirm: (value: unknown) => void = () => {};
+    let resolveSubmit: (value: unknown) => void = () => {};
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       if (url === "/api/commodities" || url === "/api/counterparties") return jsonResponse(200, []);
       if (url === "/api/trades/t1" && method === "GET") return jsonResponse(200, buildTrade({ status }));
-      if (url === "/api/trades/t1/confirm" && method === "POST") {
+      if (url === "/api/trades/t1/submit-for-approval" && method === "POST") {
         return new Promise((resolve) => {
-          resolveConfirm = () => {
-            status = "CONFIRMED";
+          resolveSubmit = () => {
+            status = "PENDING_APPROVAL";
             resolve(jsonResponse(200, buildTrade({ status })));
           };
         });
@@ -247,13 +260,15 @@ describe("TradeDetail", () => {
     renderDetail("t1");
     await waitForLoaded();
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit for approval" }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Submit for approval" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
 
-    resolveConfirm(undefined);
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument());
+    resolveSubmit(undefined);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Submit for approval" })).not.toBeInTheDocument(),
+    );
   });
 
   it("renders a CONFIRMED trade's shipments as a table with a clearly-labelled link to each shipment's detail page", async () => {
