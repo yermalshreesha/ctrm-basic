@@ -2574,3 +2574,35 @@ Dashboard into a trade detail page and confirm the Contracts section
 still shows expanded in the sidebar.
 
 ---
+
+## Phase 29 — Change 016: Intent template skill
+
+**Goal:** stop intent files drifting in number/section format, and
+stop Claude ever marking a change done itself. Per
+`intent/changes/016-intent-template-skill.md`. Tooling only; no app
+code or data model changes.
+
+**Decision:**
+- New skill `.claude/skills/intent-template/SKILL.md`: finds the next
+  NNN by scanning `intent/changes/` filenames, asks for the why
+  instead of guessing, defaults "Requested by" to Yermal Udaya
+  Shreesha (unless told otherwise), fills in the real current date,
+  writes the standard template, and sets `Status: draft`.
+- CLAUDE.md rule: Claude never sets an intent's Status to done.
+
+**Files:**
+- `.claude/skills/intent-template/SKILL.md` — new.
+- `CLAUDE.md` — new rule under Source of truth.
+- `intent/changes/016-intent-template-skill.md` — Status -> done is
+  set by the person after verification, not by Claude.
+
+**Business rules implemented:** none — tooling/process only, same
+category as Phases 20–23.
+
+**Tests:** none planned — verified manually.
+
+**Manual check:** ask Claude to start a new change and confirm the
+file/number/sections are correct; ask Claude to mark a change done
+and confirm it refuses.
+
+---
