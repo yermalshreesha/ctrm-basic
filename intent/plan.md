@@ -2606,3 +2606,39 @@ file/number/sections are correct; ask Claude to mark a change done
 and confirm it refuses.
 
 ---
+
+## Phase 30 — Change 017: Verifier subagent
+
+**Goal:** a read-only `verifier` subagent (`.claude/agents/verifier.md`)
+that runs each workspace's tests, typecheck, and lint separately
+(never the root `npm test` / `npm run typecheck`, which short-circuit
+on the first workspace's failure via `&&`), and reports an overall
+`RESULT: ALL PASS` / `RESULT: NOT VERIFIED` line followed by a
+pass/fail/skip line per check, per
+`intent/changes/017-verifier-subagent.md`. No code or data model
+changes.
+
+**Files:**
+- `.claude/agents/verifier.md` — new subagent, `tools: Bash` only (no
+  Edit/Write). Runs `npm run test -w backend`, `npm run test -w
+  frontend`, `npm run typecheck -w backend`, `npm run typecheck -w
+  frontend`, `npm run lint -w backend`, and `npm run lint -w frontend`
+  individually; checks Docker Postgres status via `docker compose ps`
+  without starting, stopping, or migrating it; skips only backend
+  tests when the DB is down.
+- `CLAUDE.md` — "Verifying your work" section points to the verifier
+  subagent.
+
+**Business rules implemented:** none — tooling only.
+
+**Tests:** none planned — not business logic.
+
+**Manual check:** run the verifier against a clean working tree
+(expect `RESULT: ALL PASS`); have the person stop the DB container and
+run it again (expect `test backend: SKIPPED`, `test frontend: PASS`,
+`RESULT: NOT VERIFIED`); have the person restart the DB and break one
+file in each workspace, confirm the verifier names the failing
+file/line for each without touching it, then have the person restore
+the files.
+
+---
