@@ -125,6 +125,8 @@ Copy `.env.example` to `.env` on first setup (already done in this repo).
 Run the tests, lint, AND typecheck (`npm test`, `npm run lint`,
 `npm run typecheck`) before reporting a task complete, and show the
 output. If a test fails, fix the code, not the test.
+Use the `verifier` subagent to do this read-only check instead of
+running the commands by hand.
 
 ## Reviews
 - Reviews follow REVIEW.md at the project root.
