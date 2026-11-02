@@ -47,27 +47,6 @@
   font-weight: 600;
 }
 
-.sidebar-section-label {
-  display: block;
-  padding: 10px 12px;
-  border-radius: 6px;
-  border-left: 3px solid transparent;
-  color: var(--sidebar-text-muted);
-  /* Collapsed state of a top-level entry once inside its own section
-     (e.g. Trades while under /trades) — not a link at that point, since
-     a child sub-item already repeats the same label/route right below
-     it (intent/changes/013-trade-screens.md). Outside the section the
-     same entry renders as a normal <a> instead. */
-  cursor: default;
-}
-
-.sidebar-section-label.active {
-  background: var(--gold-bg);
-  border-left-color: var(--gold);
-  color: var(--gold);
-  font-weight: 600;
-}
-
 .sidebar-sublist {
   list-style: none;
   padding: 0;

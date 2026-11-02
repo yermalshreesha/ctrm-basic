@@ -112,6 +112,21 @@ describe("Trades", () => {
     );
   });
 
+  it("offers PENDING_APPROVAL as a status filter option (change 014)", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/commodities") return jsonResponse(200, commodities);
+      if (url === "/api/counterparties") return jsonResponse(200, counterparties);
+      if (url.startsWith("/api/trades")) return jsonResponse(200, [trade]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderTrades();
+    await waitFor(() => expect(screen.getByLabelText("Status")).toBeInTheDocument());
+
+    expect(within(screen.getByLabelText("Status")).getByRole("option", { name: "PENDING_APPROVAL" })).toBeInTheDocument();
+  });
+
   it("changing the status filter updates the URL query params and refetches with that filter", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === "/api/commodities") return jsonResponse(200, commodities);

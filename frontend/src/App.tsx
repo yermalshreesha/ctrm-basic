@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";
 import { Approvals } from "./pages/Approvals";
 import { Dashboard } from "./pages/Dashboard";
@@ -9,7 +9,6 @@ import { ShipmentDetail } from "./pages/ShipmentDetail";
 import { ShipmentListing } from "./pages/ShipmentListing";
 import { Trades } from "./pages/Trades";
 import { TradeDetail } from "./pages/TradeDetail";
-import { TradesPlaceholder } from "./pages/TradesPlaceholder";
 import "./App.css";
 
 function App() {
@@ -19,9 +18,9 @@ function App() {
       <main className="content">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/trades" element={<Trades />} />
+          <Route path="/trades" element={<Navigate to="/trades/trades" replace />} />
           <Route path="/trades/new" element={<TradeDetail />} />
-          <Route path="/trades/trades" element={<TradesPlaceholder />} />
+          <Route path="/trades/trades" element={<Trades />} />
           <Route path="/trades/approvals" element={<Approvals />} />
           <Route path="/trades/:id" element={<TradeDetail />} />
           <Route path="/logistics" element={<Logistics />} />

@@ -36,7 +36,7 @@ export interface Warehouse {
 
 export type TradeDirection = "BUY" | "SELL";
 export type Currency = "USD" | "EUR" | "GBP";
-export type TradeStatus = "DRAFT" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+export type TradeStatus = "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
 
 export interface Trade {
   id: string;
@@ -53,6 +53,8 @@ export interface Trade {
   // Optional free text, up to 500 characters (BR-11); null when not set.
   // Editable only while status is DRAFT, like every other Trade field.
   notes: string | null;
+  // Set when a PENDING_APPROVAL trade is approved (BR-12); null otherwise.
+  approvedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

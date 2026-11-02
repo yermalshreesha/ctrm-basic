@@ -41,6 +41,15 @@ async function deliverFully(shipmentId: string) {
   await request(app).post(`/api/shipments/${shipmentId}/deliver`);
 }
 
+// A DRAFT trade can no longer be confirmed directly (BR-12) — the only
+// path to CONFIRMED is submit-for-approval followed by approve. Used by
+// every test below that just needs a CONFIRMED trade as setup, rather
+// than testing the approval workflow itself.
+async function confirmTradeViaApproval(tradeId: string) {
+  await request(app).post(`/api/trades/${tradeId}/submit-for-approval`);
+  return request(app).post(`/api/trades/${tradeId}/approve`);
+}
+
 function validTradeBody(overrides: Record<string, unknown> = {}) {
   return {
     direction: "BUY",
@@ -521,7 +530,22 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
+
+      const res = await request(app)
+        .patch(`/api/trades/${created.body.id}`)
+        .send({ notes: "Too late" });
+
+      expect(res.status).toBe(409);
+    });
+
+    it("rejects changing notes while PENDING_APPROVAL — still DRAFT-only, unaffected by change 014 (BR-11)", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
 
       const res = await request(app)
         .patch(`/api/trades/${created.body.id}`)
@@ -577,7 +601,7 @@ describe("trades", () => {
             quantityMt: "500.000",
           }),
         );
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       await createShipmentViaApi(created.body.id, warehouse.id, "100.100");
       await createShipmentViaApi(created.body.id, warehouse.id, "200.200");
 
@@ -619,7 +643,7 @@ describe("trades", () => {
             quantityMt: "500.000",
           }),
         );
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       const delivered = await createShipmentViaApi(created.body.id, warehouse.id, "100.000");
       await deliverFully(delivered.id);
       await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
@@ -699,7 +723,7 @@ describe("trades", () => {
               direction: "SELL",
             }),
           );
-        await request(app).post(`/api/trades/${toConfirm.body.id}/confirm`);
+        await confirmTradeViaApproval(toConfirm.body.id);
         confirmedTradeId = toConfirm.body.id;
 
         const toCancel = await request(app)
@@ -719,6 +743,17 @@ describe("trades", () => {
         const res = await request(app).get("/api/trades?status=CONFIRMED");
         expect(res.status).toBe(200);
         expect(res.body.map((t: { id: string }) => t.id)).toEqual([confirmedTradeId]);
+      });
+
+      it("filters by status=PENDING_APPROVAL (BR-12)", async () => {
+        const pending = await request(app)
+          .post("/api/trades")
+          .send(validTradeBody({ commodityId: wheat.id, counterpartyId: counterparty.id }));
+        await request(app).post(`/api/trades/${pending.body.id}/submit-for-approval`);
+
+        const res = await request(app).get("/api/trades?status=PENDING_APPROVAL");
+        expect(res.status).toBe(200);
+        expect(res.body.map((t: { id: string }) => t.id)).toEqual([pending.body.id]);
       });
 
       it("filters by commodityId", async () => {
@@ -805,7 +840,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
 
       const res = await request(app)
         .patch(`/api/trades/${created.body.id}`)
@@ -829,7 +864,7 @@ describe("trades", () => {
       expect(res.status).toBe(409);
     });
 
-    it("ignores a status field — status can only change via confirm/cancel", async () => {
+    it("ignores a status field — status can only change via submit-for-approval/approve/reject/cancel", async () => {
       const commodity = await createCommodity();
       const counterparty = await createCounterparty();
       const created = await request(app)
@@ -936,8 +971,147 @@ describe("trades", () => {
     });
   });
 
-  describe("confirm (POST /api/trades/:id/confirm)", () => {
-    it("transitions a DRAFT trade to CONFIRMED", async () => {
+  describe("submit for approval (POST /api/trades/:id/submit-for-approval, BR-12)", () => {
+    it("transitions a DRAFT trade to PENDING_APPROVAL", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("PENDING_APPROVAL");
+    });
+
+    it("rejects submitting a non-DRAFT trade with 409 naming both statuses", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe("Cannot transition trade from PENDING_APPROVAL to PENDING_APPROVAL");
+    });
+
+    it("returns 404 for a nonexistent trade id", async () => {
+      const res = await request(app).post(`/api/trades/${UNKNOWN_ID}/submit-for-approval`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("approve (POST /api/trades/:id/approve, BR-12)", () => {
+    it("transitions a PENDING_APPROVAL trade to CONFIRMED and sets approvedAt", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
+
+      const before = new Date();
+      const res = await request(app).post(`/api/trades/${created.body.id}/approve`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CONFIRMED");
+      expect(res.body.approvedAt).not.toBeNull();
+      expect(new Date(res.body.approvedAt).getTime()).toBeGreaterThanOrEqual(before.getTime());
+    });
+
+    it("rejects approving a DRAFT trade with 409 naming both statuses", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/approve`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe("Cannot transition trade from DRAFT to CONFIRMED");
+    });
+
+    it("rejects approving an already-CONFIRMED trade with 409 naming both statuses", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await confirmTradeViaApproval(created.body.id);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/approve`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe("Cannot transition trade from CONFIRMED to CONFIRMED");
+    });
+
+    it("returns 404 for a nonexistent trade id", async () => {
+      const res = await request(app).post(`/api/trades/${UNKNOWN_ID}/approve`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("reject (POST /api/trades/:id/reject, BR-12)", () => {
+    it("transitions a PENDING_APPROVAL trade back to DRAFT, leaving approvedAt unset", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/reject`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("DRAFT");
+      expect(res.body.approvedAt).toBeNull();
+    });
+
+    it("allows a rejected trade to be edited and submitted for approval again", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
+      await request(app).post(`/api/trades/${created.body.id}/reject`);
+
+      const patched = await request(app)
+        .patch(`/api/trades/${created.body.id}`)
+        .send({ price: "999.00" });
+      expect(patched.status).toBe(200);
+
+      const resubmitted = await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
+      expect(resubmitted.status).toBe(200);
+      expect(resubmitted.body.status).toBe("PENDING_APPROVAL");
+    });
+
+    it("rejects rejecting a DRAFT trade with 409 naming both statuses", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/reject`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe("Cannot transition trade from DRAFT to DRAFT");
+    });
+
+    it("returns 404 for a nonexistent trade id", async () => {
+      const res = await request(app).post(`/api/trades/${UNKNOWN_ID}/reject`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("the old direct-confirm endpoint is gone", () => {
+    it("POST /api/trades/:id/confirm no longer exists", async () => {
       const commodity = await createCommodity();
       const counterparty = await createCounterparty();
       const created = await request(app)
@@ -946,12 +1120,6 @@ describe("trades", () => {
 
       const res = await request(app).post(`/api/trades/${created.body.id}/confirm`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe("CONFIRMED");
-    });
-
-    it("returns 404 for a nonexistent trade id", async () => {
-      const res = await request(app).post(`/api/trades/${UNKNOWN_ID}/confirm`);
       expect(res.status).toBe(404);
     });
   });
@@ -976,7 +1144,21 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
+
+      const res = await request(app).post(`/api/trades/${created.body.id}/cancel`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CANCELLED");
+    });
+
+    it("transitions a PENDING_APPROVAL trade to CANCELLED, like a DRAFT trade", async () => {
+      const commodity = await createCommodity();
+      const counterparty = await createCounterparty();
+      const created = await request(app)
+        .post("/api/trades")
+        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
+      await request(app).post(`/api/trades/${created.body.id}/submit-for-approval`);
 
       const res = await request(app).post(`/api/trades/${created.body.id}/cancel`);
 
@@ -991,34 +1173,6 @@ describe("trades", () => {
   });
 
   describe("invalid transitions (BR-7)", () => {
-    it("rejects confirming an already-CONFIRMED trade with 409 naming both statuses", async () => {
-      const commodity = await createCommodity();
-      const counterparty = await createCounterparty();
-      const created = await request(app)
-        .post("/api/trades")
-        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
-
-      const res = await request(app).post(`/api/trades/${created.body.id}/confirm`);
-
-      expect(res.status).toBe(409);
-      expect(res.body.message).toBe("Cannot transition trade from CONFIRMED to CONFIRMED");
-    });
-
-    it("rejects confirming a CANCELLED trade with 409 naming both statuses", async () => {
-      const commodity = await createCommodity();
-      const counterparty = await createCounterparty();
-      const created = await request(app)
-        .post("/api/trades")
-        .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/cancel`);
-
-      const res = await request(app).post(`/api/trades/${created.body.id}/confirm`);
-
-      expect(res.status).toBe(409);
-      expect(res.body.message).toBe("Cannot transition trade from CANCELLED to CONFIRMED");
-    });
-
     it("rejects cancelling an already-CANCELLED trade with 409 naming both statuses", async () => {
       const commodity = await createCommodity();
       const counterparty = await createCounterparty();
@@ -1049,7 +1203,7 @@ describe("trades", () => {
             quantityMt: "100.000",
           }),
         );
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
 
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "100.000");
       await deliverFully(shipment.id);
@@ -1073,7 +1227,7 @@ describe("trades", () => {
             quantityMt: "100.000",
           }),
         );
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
 
       const shipmentA = await createShipmentViaApi(created.body.id, warehouse.id, "60.000");
       const shipmentB = await createShipmentViaApi(created.body.id, warehouse.id, "40.000");
@@ -1099,7 +1253,7 @@ describe("trades", () => {
             quantityMt: "100.000",
           }),
         );
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
 
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "100.000");
       await request(app).post(`/api/shipments/${shipment.id}/depart`);
@@ -1123,7 +1277,7 @@ describe("trades", () => {
             quantityMt: "100.000",
           }),
         );
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
 
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "60.000");
       await deliverFully(shipment.id);
@@ -1138,7 +1292,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
 
       const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
       expect(res.status).toBe(409);
@@ -1169,7 +1323,7 @@ describe("trades", () => {
             quantityMt: "100.000",
           }),
         );
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "100.000");
       await deliverFully(shipment.id);
       await request(app).post(`/api/trades/${created.body.id}/complete`);
@@ -1184,7 +1338,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       await request(app).post(`/api/trades/${created.body.id}/cancel`);
 
       const res = await request(app).post(`/api/trades/${created.body.id}/complete`);
@@ -1205,7 +1359,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
 
       const res = await request(app).post(`/api/trades/${created.body.id}/cancel`);
@@ -1220,7 +1374,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
       await request(app).post(`/api/shipments/${shipment.id}/depart`);
 
@@ -1236,7 +1390,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
       await deliverFully(shipment.id);
 
@@ -1258,7 +1412,7 @@ describe("trades", () => {
             quantityMt: "200.000",
           }),
         );
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       const plannedShipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
       const inTransitShipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
       await request(app).post(`/api/shipments/${inTransitShipment.id}/depart`);
@@ -1275,7 +1429,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
 
       const blocked = await request(app).post(`/api/trades/${created.body.id}/cancel`);
@@ -1295,7 +1449,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
       const shipment = await createShipmentViaApi(created.body.id, warehouse.id, "50.000");
 
       await request(app).post(`/api/trades/${created.body.id}/cancel`);
@@ -1313,7 +1467,7 @@ describe("trades", () => {
       const created = await request(app)
         .post("/api/trades")
         .send(validTradeBody({ commodityId: commodity.id, counterpartyId: counterparty.id }));
-      await request(app).post(`/api/trades/${created.body.id}/confirm`);
+      await confirmTradeViaApproval(created.body.id);
 
       const [cancelRes, shipmentRes] = await Promise.all([
         request(app).post(`/api/trades/${created.body.id}/cancel`),

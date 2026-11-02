@@ -68,6 +68,7 @@ enum Currency {
 
 enum TradeStatus {
   DRAFT
+  PENDING_APPROVAL
   CONFIRMED
   COMPLETED
   CANCELLED
@@ -96,6 +97,10 @@ model Trade {
   // while DRAFT, like every other Trade field. Whitespace-only input is
   // trimmed and stored as null; no edit history is kept.
   notes               String?
+  // Set when a PENDING_APPROVAL trade is approved (BR-12); stays null
+  // through DRAFT/PENDING_APPROVAL/rejection, since a trade only ever
+  // reaches CONFIRMED by being approved. No approver identity — no login.
+  approvedAt          DateTime?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   shipments           Shipment[]

@@ -45,6 +45,13 @@ async function createTrade(
   });
 }
 
+// A DRAFT trade can no longer be confirmed directly (BR-12) — the only
+// path to CONFIRMED is submit-for-approval followed by approve.
+async function confirmTradeViaApproval(tradeId: string) {
+  await request(app).post(`/api/trades/${tradeId}/submit-for-approval`);
+  return request(app).post(`/api/trades/${tradeId}/approve`);
+}
+
 function shipmentBody(tradeId: string, warehouseId: string, overrides: Record<string, unknown> = {}) {
   return {
     tradeId,
@@ -976,7 +983,7 @@ describe("shipments", () => {
         deliveryPeriodEnd: "2026-12-31",
       });
       expect(buyTradeRes.status).toBe(201);
-      await request(app).post(`/api/trades/${buyTradeRes.body.id}/confirm`);
+      await confirmTradeViaApproval(buyTradeRes.body.id);
 
       const buyShipment1 = await createShipment(buyTradeRes.body.id, warehouse.id, { quantityMt: "300.000" });
       const buyShipment2 = await createShipment(buyTradeRes.body.id, warehouse.id, { quantityMt: "200.000" });
@@ -1004,7 +1011,7 @@ describe("shipments", () => {
         deliveryPeriodEnd: "2026-12-31",
       });
       expect(sellTradeRes.status).toBe(201);
-      await request(app).post(`/api/trades/${sellTradeRes.body.id}/confirm`);
+      await confirmTradeViaApproval(sellTradeRes.body.id);
 
       const sellShipment = await createShipment(sellTradeRes.body.id, warehouse.id, { quantityMt: "300.000" });
       const departRes = await request(app).post(`/api/shipments/${sellShipment.id}/depart`);

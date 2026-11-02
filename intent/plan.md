@@ -2487,3 +2487,90 @@ cancel it directly from its detail page while PENDING_APPROVAL,
 confirming it moves to CANCELLED.
 
 ---
+
+## Phase 28 — Change 015: Rename Trades section to Contracts; real content for the Trades sub-screen
+
+**Goal:** fix two gaps found testing Phase 27 live: the sidebar section
+is still labelled "Trades" (change 014's own wording, "under
+Contracts," implied it should read "Contracts"), and the "Trades"
+sub-item (`/trades/trades`) still shows the empty placeholder from
+Phase 26 instead of the real trade list. Per
+`intent/changes/015-contracts-rename-and-trades-screen.md`.
+Frontend-only; no backend, database, or business-rule changes.
+
+**Decisions confirmed with the product owner for this phase
+(2026-11-02):**
+- Rename the top-level sidebar label "Trades" → "Contracts"; the
+  "Trades" sub-item keeps its own label.
+- The "Trades" sub-item becomes the real, already-built trade list
+  (Phase 6), moved here rather than rebuilt; the legacy `/trades` URL
+  redirects to `/trades/trades` rather than keeping a second, separate
+  copy of the same screen.
+- Removing the label collision (top-level "Trades" vs. sub-item
+  "Trades") also removes the reason Phase 26 collapsed the top-level
+  label to plain text once inside the section — with the top-level
+  label now "Contracts", it stays a normal link at all times, same as
+  Logistics. The `collapseWhenExpanded` mechanism Phase 26 added is
+  removed as dead code rather than kept unused.
+
+**Files:**
+- `intent/spec.md` — §8: sidebar description ("Contracts," not
+  "Trades"), the Contracts-section paragraph (top-level label always a
+  link, no more collapse-to-text), the Trades (list) bullet (now
+  describes the "Trades" sub-item directly, `/trades` noted as a
+  redirect), and the now-stale "Trades placeholder" bullet removed;
+  §10 (Out of scope) loses the "Content of the Trades placeholder
+  screen" bullet, since neither Contracts sub-item is a placeholder
+  any more. Already updated as part of drafting this phase.
+- `frontend/src/components/Sidebar.tsx` — top-level entry's `label`
+  changed from `"Trades"` to `"Contracts"`; the `collapseWhenExpanded`
+  field and the branch that renders a `<span>` instead of a `NavLink`
+  are removed (dead code once no `NavItem` sets it).
+- `frontend/src/components/Sidebar.css` — `.sidebar-section-label` and
+  `.sidebar-section-label.active` rules removed (only consumer was the
+  removed `<span>` branch).
+- `frontend/src/App.tsx` — `/trades/trades` now renders `Trades` (the
+  real list component) instead of `TradesPlaceholder`; `/trades` now
+  renders `<Navigate to="/trades/trades" replace />` instead of
+  `Trades` directly, so the legacy URL redirects rather than duplicating
+  the screen.
+- `frontend/src/pages/TradesPlaceholder.tsx` — deleted (no longer
+  referenced anywhere).
+- `frontend/test/Sidebar.test.tsx` — updated for the "Contracts" label,
+  the top-level entry always being a link (including while inside the
+  section), and the legacy `/trades` URL redirecting rather than
+  rendering its own content.
+
+**Business rules implemented:** none — pure UI/navigation/routing
+change, no data, no API calls.
+
+**Tests:**
+- Sidebar renders "Dashboard", "Contracts", "Logistics", "Inventory" as
+  links while on a non-Contracts, non-Logistics route; "Contracts"
+  points at `/trades/trades`; no Contracts or Logistics sub-items are
+  shown.
+- Sidebar renders "Contracts" as a link (not collapsed to plain text)
+  while on `/trades/trades`, with "Trades" and "Approvals" sub-items
+  also linked to their own routes.
+- Sidebar keeps the Contracts sub-items visible while on the legacy
+  `/trades` URL and on a trade detail route (`/trades/:id`).
+- Visiting `/trades` directly redirects to `/trades/trades` and renders
+  the real trade list (table, filters, "New trade"), not a "Coming
+  soon" placeholder.
+- The existing `Trades.test.tsx` suite (filters, Clear filters, New
+  trade navigation, PENDING_APPROVAL option) is unaffected, since it
+  renders the `Trades` component directly rather than through `App.tsx`
+  — regression-tested, not re-derived.
+
+**Manual check:** open the app on Dashboard and confirm the sidebar
+reads "Contracts" (not "Trades"); click it and confirm it navigates to
+`/trades/trades` showing the real trade list (not "Coming soon"), with
+"Contracts" still rendered as a link (not plain text) and "Trades"/
+"Approvals" sub-items beneath it; click "New trade", create a trade,
+and confirm it appears back in the list; navigate directly to the
+legacy `/trades` URL and confirm it redirects to `/trades/trades` and
+shows the same list; follow an existing "View trade" link from the
+Dashboard into a trade detail page and confirm the Contracts section
+still shows expanded in the sidebar.
+
+---

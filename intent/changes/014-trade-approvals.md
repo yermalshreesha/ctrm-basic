@@ -1,6 +1,6 @@
 # Change: Trade approval workflow
 Requested by: Yermal Udaya Shreesha   Date: 02-11-2026
-Status: in progress
+Status: done
 
 ## What they asked for
 Trades must be approved before they become active. Approval happens
